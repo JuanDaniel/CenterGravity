@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>CenterGravity</Name>
+    <Assembly>C:\Program Files\BBI\Add-in CenterGravity\CenterGravity.dll</Assembly>
+    <AddInId>3fc9040b-1de7-4a7f-9f3a-25d9c51b7217</AddInId>
+    <FullClassName>BBI.JD.CrtlApplication</FullClassName>
+    <VendorId>JDS</VendorId>
+    <VendorDescription>Juan Daniel SANTANA</VendorDescription>
+  </AddIn>
+</RevitAddIns>
