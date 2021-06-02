@@ -46,7 +46,11 @@ namespace BBI.JD
             string folder = new FileInfo(assemblyPath).Directory.FullName;
 
             // Create a customm ribbon tab
-            string tabName = "BBI";
+            #if RELEASE_STORE
+                string tabName = "JDS";
+            #else
+                string tabName = "BBI";
+            #endif
             Autodesk.Windows.RibbonTab tab = CreateRibbonTab(application, tabName);
 
             // Add new ribbon panel
@@ -57,11 +61,16 @@ namespace BBI.JD
             PushButton pushButton = ribbonPanel.AddItem(new PushButtonData(
                 "CenterGravity", "Center Gravity",
                 assemblyPath, "BBI.JD.Command")) as PushButton;
+            
+            // Set tooltip info
+            pushButton.ToolTip = "Represents Center Gravity point for model elements.";
 
             // Set the large image shown on button
-            Uri uriImage = new Uri(string.Concat(folder, "/icon_32x32.png"));
-            BitmapImage largeImage = new BitmapImage(uriImage);
-            pushButton.LargeImage = largeImage;
+            Uri uriImage = new Uri(string.Concat(folder, "/Resources/icon_32x32.png"));
+            pushButton.LargeImage = new BitmapImage(uriImage);
+
+            ContextualHelp help = new ContextualHelp(ContextualHelpType.ChmFile, string.Concat(folder, "/Resources/help.chm"));
+            pushButton.SetContextualHelp(help);
 
             return Result.Succeeded;
         }

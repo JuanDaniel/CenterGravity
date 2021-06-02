@@ -113,7 +113,7 @@ namespace BBI.JD
                 {
                     transaction.Start("Load CenterGravityFamily");
 
-                    document.LoadFamily(string.Concat(folder, "/CenterGravityFamily.rfa"), out family);
+                    document.LoadFamily(string.Concat(folder, "/Resources/CenterGravityFamily.rfa"), out family);
 
                     transaction.Commit();
                 }

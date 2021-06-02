@@ -33,6 +33,9 @@
     <WarningLevel>4</WarningLevel>
     <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release-Store|AnyCPU'">
+    <OutputPath>bin\Release-Store\</OutputPath>
+  </PropertyGroup>
   <ItemGroup>
     <Reference Include="RevitAddInUtility, Version=19.0.0.0, Culture=neutral, processorArchitecture=AMD64">
       <SpecificVersion>False</SpecificVersion>
