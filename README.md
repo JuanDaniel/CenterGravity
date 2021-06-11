@@ -1,6 +1,6 @@
-# CenterGravity
-
 ![Center Gravity](https://repository-images.githubusercontent.com/370456454/adb45d00-bca0-11eb-9ce3-599c150c03ec)
+
+# CenterGravity
 
 This tool allows to calculate the center of gravity of an element or of the set of elements; essential data if we want to carry out a lifting study.
 
