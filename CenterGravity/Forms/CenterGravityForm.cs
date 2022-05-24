@@ -172,25 +172,53 @@ namespace BBI.JD.Forms
         {
             Units units = application.ActiveUIDocument.Document.GetUnits();
 
-            //string us = (fo.CanHaveUnitSymbol() && fo.UnitSymbol != UnitSymbolType.UST_NONE) ? LabelUtils.GetLabelFor(fo.DisplayUnits) : "";
+            FormatOptions fo_volume;
+            FormatOptions fo_length;
 
-            // Convert to current display volume units
-            txt_Volume.Text = string.Format("{0:0.000}", UnitUtils.ConvertFromInternalUnits(handler.CV.Volume, units.GetFormatOptions(UnitType.UT_Volume).DisplayUnits));
+            XYZ vector;
 
-            // Convert to current display length units
-            XYZ vector = new XYZ(
-                UnitUtils.ConvertFromInternalUnits(handler.CV.Centroid.X, units.GetFormatOptions(UnitType.UT_Length).DisplayUnits),
-                UnitUtils.ConvertFromInternalUnits(handler.CV.Centroid.Y, units.GetFormatOptions(UnitType.UT_Length).DisplayUnits),
-                UnitUtils.ConvertFromInternalUnits(handler.CV.Centroid.Z, units.GetFormatOptions(UnitType.UT_Length).DisplayUnits)
-            );
+            #if RVT2019
+                fo_volume = units.GetFormatOptions(UnitType.UT_Volume);
+                fo_length = units.GetFormatOptions(UnitType.UT_Length);
 
-            //us = (fo.CanHaveUnitSymbol() && fo.UnitSymbol != UnitSymbolType.UST_NONE) ? LabelUtils.GetLabelFor(fo.DisplayUnits) : "";
+                // Convert to current display volume units
+                txt_Volume.Text = string.Format("{0:0.000}", UnitUtils.ConvertFromInternalUnits(handler.CV.Volume, fo_volume.DisplayUnits));
+
+                // Convert to current display length units
+                vector = new XYZ(
+                    UnitUtils.ConvertFromInternalUnits(handler.CV.Centroid.X, fo_length.DisplayUnits),
+                    UnitUtils.ConvertFromInternalUnits(handler.CV.Centroid.Y, fo_length.DisplayUnits),
+                    UnitUtils.ConvertFromInternalUnits(handler.CV.Centroid.Z, fo_length.DisplayUnits)
+                );
+            #else
+                fo_volume = units.GetFormatOptions(SpecTypeId.Volume);
+                fo_length = units.GetFormatOptions(SpecTypeId.Length);
+
+                // Convert to current display volume units
+                txt_Volume.Text = string.Format("{0:0.000}", UnitUtils.ConvertFromInternalUnits(handler.CV.Volume, fo_volume.GetUnitTypeId()));
+
+                // Convert to current display length units
+                vector = new XYZ(
+                    UnitUtils.ConvertFromInternalUnits(handler.CV.Centroid.X, fo_length.GetUnitTypeId()),
+                    UnitUtils.ConvertFromInternalUnits(handler.CV.Centroid.Y, fo_length.GetUnitTypeId()),
+                    UnitUtils.ConvertFromInternalUnits(handler.CV.Centroid.Z, fo_length.GetUnitTypeId())
+                );
+            #endif
 
             txt_X.Text = string.Format("{0:0.000}", vector.X);
             txt_Y.Text = string.Format("{0:0.000}", vector.Y);
             txt_Z.Text = string.Format("{0:0.000}", vector.Z);
 
-            txt_XYZ.Text = handler.CV.XYZToString(units.GetFormatOptions(UnitType.UT_Length));
+            txt_XYZ.Text = handler.CV.XYZToString(fo_length);
+        }
+
+        public void ShowMessageError(Exception ex)
+        {
+            MessageBox.Show(ex.Message, "Center Gravity error exception", MessageBoxButtons.OK, MessageBoxIcon.Error);
+
+            handler.ClearElements();
+
+            Close();
         }
 
         private void CenterGravityForm_KeyUp(object sender, KeyEventArgs e)

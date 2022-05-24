@@ -20,12 +20,21 @@ namespace BBI.JD
         public double Volume { get; set; }
         public string XYZToString(FormatOptions fo)
         {
-            // Convert to current display length units
-            return string.Format("{0}; {1}; {2}",
-                UnitUtils.ConvertFromInternalUnits(Centroid.X, fo.DisplayUnits),
-                UnitUtils.ConvertFromInternalUnits(Centroid.Y, fo.DisplayUnits),
-                UnitUtils.ConvertFromInternalUnits(Centroid.Z, fo.DisplayUnits)
-            );
+            #if RVT2019
+                // Convert to current display length units
+                return string.Format("{0}; {1}; {2}",
+                    UnitUtils.ConvertFromInternalUnits(Centroid.X, fo.DisplayUnits),
+                    UnitUtils.ConvertFromInternalUnits(Centroid.Y, fo.DisplayUnits),
+                    UnitUtils.ConvertFromInternalUnits(Centroid.Z, fo.DisplayUnits)
+                );
+            #else
+                // Convert to current display length units
+                return string.Format("{0}; {1}; {2}",
+                    UnitUtils.ConvertFromInternalUnits(Centroid.X, fo.GetUnitTypeId()),
+                    UnitUtils.ConvertFromInternalUnits(Centroid.Y, fo.GetUnitTypeId()),
+                    UnitUtils.ConvertFromInternalUnits(Centroid.Z, fo.GetUnitTypeId())
+                );
+            #endif
         }
     }
 

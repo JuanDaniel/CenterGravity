@@ -66,10 +66,10 @@ namespace BBI.JD
             pushButton.ToolTip = "Represents Center Gravity point for model elements.";
 
             // Set the large image shown on button
-            Uri uriImage = new Uri(string.Concat(folder, "/Resources/icon_32x32.png"));
+            Uri uriImage = new Uri(string.Concat(folder, "/../Resources/icon_32x32.png"));
             pushButton.LargeImage = new BitmapImage(uriImage);
 
-            ContextualHelp help = new ContextualHelp(ContextualHelpType.ChmFile, string.Concat(folder, "/Resources/help.chm"));
+            ContextualHelp help = new ContextualHelp(ContextualHelpType.ChmFile, string.Concat(folder, "/../Resources/help.chm"));
             pushButton.SetContextualHelp(help);
 
             return Result.Succeeded;
@@ -139,6 +139,14 @@ namespace BBI.JD
             if (form != null)
             {
                 form.UpdateCentroidValues();
+            }
+        }
+
+        public void ShowFormMessageError(Exception ex)
+        {
+            if (form != null)
+            {
+                form.ShowMessageError(ex);
             }
         }
     }

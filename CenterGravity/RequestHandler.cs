@@ -52,6 +52,11 @@ namespace BBI.JD
             return index;
         }
 
+        public void ClearElements()
+        {
+            elements.Clear();
+        }
+
         public void Execute(UIApplication application)
         {
             try
@@ -89,7 +94,9 @@ namespace BBI.JD
                         }
                 }
             }
-            catch (Exception ex){}
+            catch (Exception ex){
+                CrtlApplication.thisApp.ShowFormMessageError(ex);
+            }
         }
 
         private void CenterGravityFamily(UIApplication application)
@@ -113,7 +120,7 @@ namespace BBI.JD
                 {
                     transaction.Start("Load CenterGravityFamily");
 
-                    document.LoadFamily(string.Concat(folder, "/Resources/CenterGravityFamily.rfa"), out family);
+                    document.LoadFamily(string.Concat(folder, "/../Resources/CenterGravityFamily.rfa"), out family);
 
                     transaction.Commit();
                 }
@@ -167,43 +174,46 @@ namespace BBI.JD
             {
                 Element element = elements[0];
 
-                //if (!instanceIds.ContainsKey(element.Id))
-                //{
-                    cv = GeometryUtils.GetCentroid(elements, new Options());
+                cv = GeometryUtils.GetCentroid(elements, new Options());
 
-                    // Put graphical point
-                    FamilySymbol familySymbol = null;
+                // Put graphical point
+                FamilySymbol familySymbol = null;
 
-                    foreach (ElementId fsids in family.GetFamilySymbolIds())
+                foreach (ElementId fsids in family.GetFamilySymbolIds())
+                {
+                    familySymbol = document.GetElement(fsids) as FamilySymbol;
+                }
+
+                if (familySymbol != null && familySymbol.FamilyName == "CenterGravityFamily")
+                {
+                    using (Transaction transaction = new Transaction(document))
                     {
-                        familySymbol = document.GetElement(fsids) as FamilySymbol;
-                    }
+                        transaction.Start("Put graphical Center Gravity point");
 
-                    if (familySymbol != null && familySymbol.FamilyName == "CenterGravityFamily")
-                    {
-                        using (Transaction transaction = new Transaction(document))
+                        if (!familySymbol.IsActive)
                         {
-                            transaction.Start("Put graphical Center Gravity point");
+                            familySymbol.Activate();
+                        }
 
-                            if (!familySymbol.IsActive)
-                            {
-                                familySymbol.Activate();
-                            }
+                        Level level = document.GetElement(element.LevelId) as Level;
 
-                            Level level = document.GetElement(element.LevelId) as Level;
+                        FamilyInstance familyInstance = document.Create.NewFamilyInstance(cv.Centroid, familySymbol, element, level, StructuralType.NonStructural);
 
-                            FamilyInstance familyInstance = document.Create.NewFamilyInstance(cv.Centroid, familySymbol, element, level, StructuralType.NonStructural);
-
+                        #if RVT2019
                             familyInstance.LookupParameter("CenterGravity").Set(cv.XYZToString(
                                 document.GetUnits().GetFormatOptions(UnitType.UT_Length)
                             ));
+                        #else
+                            familyInstance.LookupParameter("CenterGravity").Set(cv.XYZToString(
+                                document.GetUnits().GetFormatOptions(SpecTypeId.Length)
+                            ));
+                        #endif
 
-                            instanceIds.Add(element.Id, familyInstance.Id);
+                        instanceIds.Add(element.Id, familyInstance.Id);
 
-                            transaction.Commit();
-                        }
+                        transaction.Commit();
                     }
-                //}
+                }
             }
         }
 
