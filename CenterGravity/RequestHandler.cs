@@ -6,14 +6,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace BBI.JD
 {
     public class RequestHandler : IExternalEventHandler
     {
-        private Request request = new Request();
+        private readonly Request request = new();
         private Family family;
         private int index = -1;
         private List<Element> elements;
@@ -25,7 +23,7 @@ namespace BBI.JD
             get { return request; }
         }
 
-        public String GetName()
+        public string GetName()
         {
             return "Center Gravity";
         }
@@ -116,14 +114,12 @@ namespace BBI.JD
                 string folder = new FileInfo(assemblyPath).Directory.FullName;
 
                 // Load Center Gravity Family
-                using (Transaction transaction = new Transaction(document))
-                {
-                    transaction.Start("Load CenterGravityFamily");
+                using Transaction transaction = new Transaction(document);
+                transaction.Start("Load CenterGravityFamily");
 
-                    document.LoadFamily(string.Concat(folder, "/../Resources/CenterGravityFamily.rfa"), out family);
+                document.LoadFamily(Path.Combine(folder, "Resources/CenterGravityFamily.rfa"), out family);
 
-                    transaction.Commit();
-                }
+                transaction.Commit();
             }
         }
 
@@ -134,7 +130,7 @@ namespace BBI.JD
 
             // Reset INDEX and ELEMENTS
             index = -1;
-            elements = new List<Element>();
+            elements = [];
 
             var ids = uiDoc.Selection.GetElementIds();
 
@@ -186,33 +182,25 @@ namespace BBI.JD
 
                 if (familySymbol != null && familySymbol.FamilyName == "CenterGravityFamily")
                 {
-                    using (Transaction transaction = new Transaction(document))
+                    using Transaction transaction = new(document);
+                    transaction.Start("Put graphical Center Gravity point");
+
+                    if (!familySymbol.IsActive)
                     {
-                        transaction.Start("Put graphical Center Gravity point");
-
-                        if (!familySymbol.IsActive)
-                        {
-                            familySymbol.Activate();
-                        }
-
-                        Level level = document.GetElement(element.LevelId) as Level;
-
-                        FamilyInstance familyInstance = document.Create.NewFamilyInstance(cv.Centroid, familySymbol, element, level, StructuralType.NonStructural);
-
-                        #if RVT2019
-                            familyInstance.LookupParameter("CenterGravity").Set(cv.XYZToString(
-                                document.GetUnits().GetFormatOptions(UnitType.UT_Length)
-                            ));
-                        #else
-                            familyInstance.LookupParameter("CenterGravity").Set(cv.XYZToString(
-                                document.GetUnits().GetFormatOptions(SpecTypeId.Length)
-                            ));
-                        #endif
-
-                        instanceIds.Add(element.Id, familyInstance.Id);
-
-                        transaction.Commit();
+                        familySymbol.Activate();
                     }
+
+                    Level level = document.GetElement(element.LevelId) as Level;
+
+                    FamilyInstance familyInstance = document.Create.NewFamilyInstance(cv.Centroid, familySymbol, element, level, StructuralType.NonStructural);
+
+                    familyInstance.LookupParameter("CenterGravity").Set(cv.XYZToString(
+                        document.GetUnits().GetFormatOptions(SpecTypeId.Length)
+                    ));
+
+                    instanceIds.Add(element.Id, familyInstance.Id);
+
+                    transaction.Commit();
                 }
             }
         }
@@ -222,7 +210,7 @@ namespace BBI.JD
             UIDocument uiDoc = application.ActiveUIDocument;
             Document document = uiDoc.Document;
 
-            using (Transaction transaction = new Transaction(document))
+            using (Transaction transaction = new(document))
             {
                 transaction.Start("Remove Center Gravity points");
 
@@ -234,7 +222,8 @@ namespace BBI.JD
                 transaction.Commit();
             }
 
-            instanceIds = new Dictionary<ElementId, ElementId>();
+            instanceIds = [];
+            elements = [];
         }
     }
 }

@@ -1,9 +1,5 @@
 ﻿using Autodesk.Revit.DB;
-using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace BBI.JD
 {
@@ -20,21 +16,12 @@ namespace BBI.JD
         public double Volume { get; set; }
         public string XYZToString(FormatOptions fo)
         {
-            #if RVT2019
-                // Convert to current display length units
-                return string.Format("{0}; {1}; {2}",
-                    UnitUtils.ConvertFromInternalUnits(Centroid.X, fo.DisplayUnits),
-                    UnitUtils.ConvertFromInternalUnits(Centroid.Y, fo.DisplayUnits),
-                    UnitUtils.ConvertFromInternalUnits(Centroid.Z, fo.DisplayUnits)
-                );
-            #else
-                // Convert to current display length units
-                return string.Format("{0}; {1}; {2}",
-                    UnitUtils.ConvertFromInternalUnits(Centroid.X, fo.GetUnitTypeId()),
-                    UnitUtils.ConvertFromInternalUnits(Centroid.Y, fo.GetUnitTypeId()),
-                    UnitUtils.ConvertFromInternalUnits(Centroid.Z, fo.GetUnitTypeId())
-                );
-            #endif
+            // Convert to current display length units
+            return string.Format("{0}; {1}; {2}",
+                UnitUtils.ConvertFromInternalUnits(Centroid.X, fo.GetUnitTypeId()),
+                UnitUtils.ConvertFromInternalUnits(Centroid.Y, fo.GetUnitTypeId()),
+                UnitUtils.ConvertFromInternalUnits(Centroid.Z, fo.GetUnitTypeId())
+            );
         }
     }
 
@@ -42,14 +29,14 @@ namespace BBI.JD
     {
         public static CentroidVolume GetCentroid(Solid solid)
         {
-            CentroidVolume cv = new CentroidVolume();
+            CentroidVolume cv = new();
             double v;
             XYZ v0, v1, v2;
 
-            SolidOrShellTessellationControls controls
-              = new SolidOrShellTessellationControls();
-
-            controls.LevelOfDetail = 0;
+            SolidOrShellTessellationControls controls = new()
+            {
+                LevelOfDetail = 0
+            };
 
             TriangulatedSolidOrShell triangulation = null;
 
@@ -67,15 +54,13 @@ namespace BBI.JD
 
             for (int i = 0; i < n; ++i)
             {
-                TriangulatedShellComponent component
-                  = triangulation.GetShellComponent(i);
+                TriangulatedShellComponent component = triangulation.GetShellComponent(i);
 
                 int m = component.TriangleCount;
 
                 for (int j = 0; j < m; ++j)
                 {
-                    TriangleInShellComponent t
-                      = component.GetTriangle(j);
+                    TriangleInShellComponent t = component.GetTriangle(j);
 
                     v0 = component.GetVertex(t.VertexIndex0);
                     v1 = component.GetVertex(t.VertexIndex1);
@@ -94,7 +79,7 @@ namespace BBI.JD
 
             cv.Centroid /= 4 * cv.Volume;
 
-            XYZ diffCentroid = cv.Centroid - solid.ComputeCentroid();
+            // XYZ diffCentroid = cv.Centroid - solid.ComputeCentroid();
 
             // And, just in case you want to know 
             // the total volume of the model:
@@ -125,7 +110,7 @@ namespace BBI.JD
             {
                 // List of pairs of centroid, volume for each solid
 
-                List<CentroidVolume> a = new List<CentroidVolume>();
+                List<CentroidVolume> a = [];
 
                 if (e is FamilyInstance)
                 {
@@ -192,7 +177,7 @@ namespace BBI.JD
 
         public static CentroidVolume GetCentroid(List<Element> elements, Options opt)
         {
-            CentroidVolume cv = new CentroidVolume();
+            CentroidVolume cv = new();
 
             foreach (var element in elements)
             {

@@ -2,12 +2,9 @@
 using Autodesk.Revit.UI;
 using BBI.JD.Forms;
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Media.Imaging;
 
 namespace BBI.JD
@@ -46,11 +43,7 @@ namespace BBI.JD
             string folder = new FileInfo(assemblyPath).Directory.FullName;
 
             // Create a customm ribbon tab
-            #if RELEASE_STORE
-                string tabName = "JDS";
-            #else
-                string tabName = "BBI";
-            #endif
+            string tabName = "JDS";
             Autodesk.Windows.RibbonTab tab = CreateRibbonTab(application, tabName);
 
             // Add new ribbon panel
@@ -66,10 +59,10 @@ namespace BBI.JD
             pushButton.ToolTip = "Represents Center Gravity point for model elements.";
 
             // Set the large image shown on button
-            Uri uriImage = new Uri(string.Concat(folder, "/../Resources/icon_32x32.png"));
+            Uri uriImage = new(Path.Combine(folder, "Resources/icon_32x32.png"));
             pushButton.LargeImage = new BitmapImage(uriImage);
 
-            ContextualHelp help = new ContextualHelp(ContextualHelpType.ChmFile, string.Concat(folder, "/../Resources/help.chm"));
+            ContextualHelp help = new(ContextualHelpType.ChmFile, Path.Combine(folder, "Resources/help.chm"));
             pushButton.SetContextualHelp(help);
 
             return Result.Succeeded;
@@ -103,10 +96,7 @@ namespace BBI.JD
         {
             RibbonPanel panel = application.GetRibbonPanels(tab.Name).FirstOrDefault(x => x.Name == panelName);
 
-            if (panel == null)
-            {
-                panel = application.CreateRibbonPanel(tab.Name, panelName);
-            }
+            panel ??= application.CreateRibbonPanel(tab.Name, panelName);
 
             return panel;
         }
@@ -128,26 +118,17 @@ namespace BBI.JD
 
         public void UpdateFormValues()
         {
-            if (form != null)
-            {
-                form.UpdateValues();
-            }
+            form?.UpdateValues();
         }
 
         public void UpdateFormCentroidValues()
         {
-            if (form != null)
-            {
-                form.UpdateCentroidValues();
-            }
+            form?.UpdateCentroidValues();
         }
 
         public void ShowFormMessageError(Exception ex)
         {
-            if (form != null)
-            {
-                form.ShowMessageError(ex);
-            }
+            form?.ShowMessageError(ex);
         }
     }
 }

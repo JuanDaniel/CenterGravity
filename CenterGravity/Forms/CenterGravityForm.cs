@@ -1,7 +1,6 @@
 ﻿using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Windows.Forms;
@@ -11,9 +10,9 @@ namespace BBI.JD.Forms
     public partial class CenterGravityForm : System.Windows.Forms.Form
     {
         private Autodesk.Windows.RibbonTab tab;
-        private RequestHandler handler;
-        private ExternalEvent exEvent;
-        private UIApplication application;
+        private readonly RequestHandler handler;
+        private readonly ExternalEvent exEvent;
+        private readonly UIApplication application;
 
         public CenterGravityForm(ExternalEvent exEvent, RequestHandler handler, UIApplication application)
         {
@@ -45,7 +44,7 @@ namespace BBI.JD.Forms
             RegisterEvent(false);
         }
 
-        private void btn_Previous_Click(object sender, EventArgs e)
+        private void Btn_Previous_Click(object sender, EventArgs e)
         {
             if (handler.Index > 0)
             {
@@ -64,7 +63,7 @@ namespace BBI.JD.Forms
             }
         }
 
-        private void btn_Next_Click(object sender, EventArgs e)
+        private void Btn_Next_Click(object sender, EventArgs e)
         {
             if (handler.Index < handler.Elements.Count - 1)
             {
@@ -80,18 +79,18 @@ namespace BBI.JD.Forms
             }
         }
 
-        private void btn_Clear_Click(object sender, EventArgs e)
+        private void Btn_Clear_Click(object sender, EventArgs e)
         {
             MakeRequest(RequestId.RemoveCenterGravity);
             Clear();
         }
 
-        private void btn_Close_Click(object sender, EventArgs e)
+        private void Btn_Close_Click(object sender, EventArgs e)
         {
             Close();
         }
 
-        private string GetTiTleForm()
+        private static string GetTiTleForm()
         {
             Version version = Assembly.GetExecutingAssembly().GetName().Version;
 
@@ -137,6 +136,7 @@ namespace BBI.JD.Forms
 
         private void Clear()
         {
+            lbl_Index.Text = string.Empty;
             txt_ID.Clear();
             txt_Name.Clear();
             txt_Family.Clear();
@@ -177,33 +177,18 @@ namespace BBI.JD.Forms
 
             XYZ vector;
 
-            #if RVT2019
-                fo_volume = units.GetFormatOptions(UnitType.UT_Volume);
-                fo_length = units.GetFormatOptions(UnitType.UT_Length);
+            fo_volume = units.GetFormatOptions(SpecTypeId.Volume);
+            fo_length = units.GetFormatOptions(SpecTypeId.Length);
 
-                // Convert to current display volume units
-                txt_Volume.Text = string.Format("{0:0.000}", UnitUtils.ConvertFromInternalUnits(handler.CV.Volume, fo_volume.DisplayUnits));
+            // Convert to current display volume units
+            txt_Volume.Text = string.Format("{0:0.000}", UnitUtils.ConvertFromInternalUnits(handler.CV.Volume, fo_volume.GetUnitTypeId()));
 
-                // Convert to current display length units
-                vector = new XYZ(
-                    UnitUtils.ConvertFromInternalUnits(handler.CV.Centroid.X, fo_length.DisplayUnits),
-                    UnitUtils.ConvertFromInternalUnits(handler.CV.Centroid.Y, fo_length.DisplayUnits),
-                    UnitUtils.ConvertFromInternalUnits(handler.CV.Centroid.Z, fo_length.DisplayUnits)
-                );
-            #else
-                fo_volume = units.GetFormatOptions(SpecTypeId.Volume);
-                fo_length = units.GetFormatOptions(SpecTypeId.Length);
-
-                // Convert to current display volume units
-                txt_Volume.Text = string.Format("{0:0.000}", UnitUtils.ConvertFromInternalUnits(handler.CV.Volume, fo_volume.GetUnitTypeId()));
-
-                // Convert to current display length units
-                vector = new XYZ(
-                    UnitUtils.ConvertFromInternalUnits(handler.CV.Centroid.X, fo_length.GetUnitTypeId()),
-                    UnitUtils.ConvertFromInternalUnits(handler.CV.Centroid.Y, fo_length.GetUnitTypeId()),
-                    UnitUtils.ConvertFromInternalUnits(handler.CV.Centroid.Z, fo_length.GetUnitTypeId())
-                );
-            #endif
+            // Convert to current display length units
+            vector = new XYZ(
+                UnitUtils.ConvertFromInternalUnits(handler.CV.Centroid.X, fo_length.GetUnitTypeId()),
+                UnitUtils.ConvertFromInternalUnits(handler.CV.Centroid.Y, fo_length.GetUnitTypeId()),
+                UnitUtils.ConvertFromInternalUnits(handler.CV.Centroid.Z, fo_length.GetUnitTypeId())
+            );
 
             txt_X.Text = string.Format("{0:0.000}", vector.X);
             txt_Y.Text = string.Format("{0:0.000}", vector.Y);
