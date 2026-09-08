@@ -1,4 +1,5 @@
-﻿using Autodesk.Revit.DB;
+using Autodesk.Revit.DB;
+using System;
 using System.Collections.Generic;
 
 namespace BBI.JD
@@ -10,10 +11,27 @@ namespace BBI.JD
         {
             Centroid = XYZ.Zero;
             Volume = 0.0;
+            SkippedElementIds = new List<ElementId>();
         }
 
         public XYZ Centroid { get; set; }
         public double Volume { get; set; }
+
+        /// <summary>Elements that carried no usable solid geometry and were left out of the calculation.</summary>
+        public List<ElementId> SkippedElementIds { get; }
+
+        /// <summary>True when the result is a real, finite centroid backed by a non-zero volume.</summary>
+        public bool IsValid
+        {
+            get
+            {
+                return Centroid != null
+                    && Math.Abs(Volume) > GeometryUtils.VolumeTolerance
+                    && !double.IsNaN(Centroid.X) && !double.IsNaN(Centroid.Y) && !double.IsNaN(Centroid.Z)
+                    && !double.IsInfinity(Centroid.X) && !double.IsInfinity(Centroid.Y) && !double.IsInfinity(Centroid.Z);
+            }
+        }
+
         public string XYZToString(FormatOptions fo)
         {
             // Convert to current display length units
@@ -27,6 +45,10 @@ namespace BBI.JD
 
     static class GeometryUtils
     {
+        // Volumes are handled in internal units (cubic feet); anything below this
+        // is treated as "no volume" to avoid dividing by (almost) zero.
+        internal const double VolumeTolerance = 1e-9;
+
         public static CentroidVolume GetCentroid(Solid solid)
         {
             CentroidVolume cv = new();
@@ -75,28 +97,29 @@ namespace BBI.JD
                 }
             }
 
-            // Set centroid coordinates to their final value
+            // Degenerate / empty solid: no meaningful centroid.
+            if (Math.Abs(cv.Volume) < VolumeTolerance)
+            {
+                return null;
+            }
 
+            // Set centroid coordinates to their final value
             cv.Centroid /= 4 * cv.Volume;
 
-            // XYZ diffCentroid = cv.Centroid - solid.ComputeCentroid();
-
-            // And, just in case you want to know 
-            // the total volume of the model:
-
+            // And, just in case you want to know the total volume of the model:
             cv.Volume /= 6;
 
             return cv;
         }
 
-        // Calculate centroid for all non-empty solids 
-        // found for the given element. Family instances 
-        // may have their own non-empty solids, in which 
+        // Calculate centroid for all non-empty solids
+        // found for the given element. Family instances
+        // may have their own non-empty solids, in which
         // case those are used, otherwise the symbol geometry.
-        // The symbol geometry could keep track of the 
-        // instance transform to map it to the actual 
-        // project location. Instead, we ask for 
-        // transformed geometry to be returned, so the 
+        // The symbol geometry could keep track of the
+        // instance transform to map it to the actual
+        // project location. Instead, we ask for
+        // transformed geometry to be returned, so the
         // resulting solids are already in place.
         public static CentroidVolume GetCentroid(Element e, Options opt)
         {
@@ -153,10 +176,10 @@ namespace BBI.JD
                     }
                 }
 
-                // Get the total centroid from the partial
-                // contributions. Each contribution is weighted
-                // with its associated volume, which needs to 
-                // be factored out again at the end.
+                // Get the total centroid from the partial contributions.
+                // Each contribution is weighted with its associated volume,
+                // which is factored out again at the end:
+                //     C = sum(V_i * C_i) / sum(V_i)
 
                 if (0 < a.Count)
                 {
@@ -168,7 +191,14 @@ namespace BBI.JD
                         cv.Volume += cv2.Volume;
                     }
 
-                    cv.Centroid /= a.Count * cv.Volume;
+                    if (Math.Abs(cv.Volume) > VolumeTolerance)
+                    {
+                        cv.Centroid /= cv.Volume;
+                    }
+                    else
+                    {
+                        cv = null;
+                    }
                 }
             }
 
@@ -183,14 +213,27 @@ namespace BBI.JD
             {
                 CentroidVolume cv1 = GetCentroid(element, opt);
 
-                if (cv1 != null)
+                if (cv1 != null && cv1.IsValid)
                 {
-                    cv.Centroid = cv.Centroid.Add(new XYZ(cv1.Centroid.X * cv1.Volume, cv1.Centroid.Y * cv1.Volume, cv1.Centroid.Z * cv1.Volume));
+                    cv.Centroid += cv1.Volume * cv1.Centroid;
                     cv.Volume += cv1.Volume;
+                }
+                else
+                {
+                    cv.SkippedElementIds.Add(element.Id);
                 }
             }
 
-            cv.Centroid = cv.Centroid.Divide(cv.Volume);
+            if (Math.Abs(cv.Volume) > VolumeTolerance)
+            {
+                cv.Centroid /= cv.Volume;
+            }
+            else
+            {
+                // Nothing in the selection had usable solid geometry.
+                cv.Centroid = XYZ.Zero;
+                cv.Volume = 0.0;
+            }
 
             return cv;
         }

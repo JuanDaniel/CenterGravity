@@ -1,7 +1,7 @@
-﻿using Autodesk.Revit.DB;
+using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using Autodesk.Revit.UI.Events;
 using System;
-using System.Linq;
 using System.Reflection;
 using System.Windows.Forms;
 
@@ -9,7 +9,6 @@ namespace BBI.JD.Forms
 {
     public partial class CenterGravityForm : System.Windows.Forms.Form
     {
-        private Autodesk.Windows.RibbonTab tab;
         private readonly RequestHandler handler;
         private readonly ExternalEvent exEvent;
         private readonly UIApplication application;
@@ -25,8 +24,11 @@ namespace BBI.JD.Forms
 
         private void CenterGravity_Load(object sender, EventArgs e)
         {
-            MakeRequest(RequestId.CenterGravityFamily);
             RegisterEvent();
+
+            // Compute straight away from whatever is already selected in Revit,
+            // so the tool no longer needs to be opened *before* selecting.
+            MakeRequest(RequestId.Select);
         }
 
         private void CenterGravity_FormClosed(object sender, FormClosedEventArgs e)
@@ -105,33 +107,24 @@ namespace BBI.JD.Forms
 
         private void RegisterEvent(bool register = true)
         {
+            // Revit >= 2024 exposes a first-class selection-changed event, which
+            // replaces the old trick of watching the "Modify" ribbon tab title.
             if (register)
             {
-                tab = Autodesk.Windows.ComponentManager.Ribbon.Tabs.FirstOrDefault(x => x.Id == "Modify");
-
-                if (tab != null)
-                {
-                    tab.PropertyChanged += SelectionChanged;
-                }
+                application.SelectionChanged += OnRevitSelectionChanged;
             }
             else
             {
-                if (tab != null)
-                {
-                    tab.PropertyChanged -= SelectionChanged;
-                }
+                application.SelectionChanged -= OnRevitSelectionChanged;
             }
         }
 
-        private void SelectionChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
+        private void OnRevitSelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (e.PropertyName == "Title")
-            {
-                btn_Previous.Enabled = false;
-                btn_Next.Enabled = false;
+            btn_Previous.Enabled = false;
+            btn_Next.Enabled = false;
 
-                MakeRequest(RequestId.Select);
-            }
+            MakeRequest(RequestId.Select);
         }
 
         private void Clear()
@@ -149,6 +142,16 @@ namespace BBI.JD.Forms
 
         public void UpdateValues()
         {
+            if (handler.Elements == null || handler.Elements.Count == 0)
+            {
+                lbl_Index.Text = string.Empty;
+                btn_Next.Enabled = false;
+                btn_Previous.Enabled = false;
+                Clear();
+
+                return;
+            }
+
             btn_Next.Enabled = handler.Elements.Count > 1;
 
             lbl_Index.Text = string.Format("{0} / {1}", handler.Index + 1, handler.Elements.Count);
@@ -170,6 +173,18 @@ namespace BBI.JD.Forms
 
         public void UpdateCentroidValues()
         {
+            if (handler.CV == null || !handler.CV.IsValid)
+            {
+                // Selection has no usable solid geometry.
+                txt_Volume.Text = "-";
+                txt_X.Text = "-";
+                txt_Y.Text = "-";
+                txt_Z.Text = "-";
+                txt_XYZ.Text = "-";
+
+                return;
+            }
+
             Units units = application.ActiveUIDocument.Document.GetUnits();
 
             FormatOptions fo_volume;
