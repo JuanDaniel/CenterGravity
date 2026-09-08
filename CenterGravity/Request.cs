@@ -8,7 +8,8 @@ namespace BBI.JD
         CenterGravityFamily = 1,
         Select = 2,
         PlaceCenterGravity = 3,
-        RemoveCenterGravity = 4
+        RemoveCenterGravity = 4,
+        CreateSchedule = 5
     }
 
     public class Request

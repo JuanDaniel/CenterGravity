@@ -19,11 +19,17 @@ namespace BBI.JD.UI
             this.handler = handler;
             this.exEvent = exEvent;
 
-            vm = new CenterGravityViewModel
+            vm = new CenterGravityViewModel();
+            vm.PlaceRequested = () =>
             {
-                PlaceRequested = () => MakeRequest(RequestId.PlaceCenterGravity),
-                ClearRequested = () => MakeRequest(RequestId.RemoveCenterGravity)
+                this.handler.PlaceAtMass = vm.WeightByMass;
+                this.handler.ReferenceOrigin = vm.CurrentReferenceOriginInternal;
+                this.handler.ReferenceLabel = vm.CurrentReferenceLabel;
+                this.handler.LiftName = vm.LiftName;
+                MakeRequest(RequestId.PlaceCenterGravity);
             };
+            vm.ClearRequested = () => MakeRequest(RequestId.RemoveCenterGravity);
+            vm.CreateScheduleRequested = () => MakeRequest(RequestId.CreateSchedule);
             vm.DensityChanged = () =>
             {
                 this.handler.DefaultDensityInternal = vm.DefaultDensityInternal;

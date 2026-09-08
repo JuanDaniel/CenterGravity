@@ -69,6 +69,7 @@ namespace BBI.JD.UI
             ClearCommand = new RelayCommand(() => ClearRequested?.Invoke(), () => hasMarkers);
             CopyCommand = new RelayCommand(CopyCoordinates, () => hasResult);
             ExportCsvCommand = new RelayCommand(ExportCsv, () => hasResult);
+            CreateScheduleCommand = new RelayCommand(() => CreateScheduleRequested?.Invoke(), () => hasMarkers);
         }
 
         /// <summary>Raised when the user asks to drop the centre-of-gravity marker into the model.</summary>
@@ -76,6 +77,9 @@ namespace BBI.JD.UI
 
         /// <summary>Raised when the user asks to remove the drawn centre-of-gravity marker(s).</summary>
         public Action ClearRequested;
+
+        /// <summary>Raised when the user asks to build a Center of Gravity schedule.</summary>
+        public Action CreateScheduleRequested;
 
         /// <summary>Raised when the default density changes; the pane pushes it to the handler and recomputes.</summary>
         public Action DensityChanged;
@@ -149,10 +153,23 @@ namespace BBI.JD.UI
 
         public string DensityUnitLabel { get; private set; } = string.Empty;
 
+        private string liftName = string.Empty;
+        public string LiftName
+        {
+            get => liftName;
+            set { if (value != liftName) { liftName = value; OnPropertyChanged(); } }
+        }
+
+        /// <summary>Reference origin (internal coords) for the current selector value.</summary>
+        public XYZ CurrentReferenceOriginInternal => CurrentOrigin();
+
+        public string CurrentReferenceLabel => selectedReference?.Label;
+
         public ICommand PlaceCommand { get; }
         public ICommand ClearCommand { get; }
         public ICommand CopyCommand { get; }
         public ICommand ExportCsvCommand { get; }
+        public ICommand CreateScheduleCommand { get; }
 
         public bool HasResult
         {

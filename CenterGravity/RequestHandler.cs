@@ -46,6 +46,12 @@ namespace BBI.JD
         /// <summary>When true, "Place marker" drops the point at the mass-weighted centre of gravity.</summary>
         public bool PlaceAtMass { get; set; }
 
+        /// <summary>Origin (internal coords) the pane is reporting against; written onto the marker.</summary>
+        public XYZ ReferenceOrigin { get; set; } = XYZ.Zero;
+
+        public string ReferenceLabel { get; set; }
+        public string LiftName { get; set; }
+
         public void Execute(UIApplication application)
         {
             try
@@ -65,6 +71,9 @@ namespace BBI.JD
                         break;
                     case RequestId.RemoveCenterGravity:
                         RemoveMarkers(application);
+                        break;
+                    case RequestId.CreateSchedule:
+                        CreateSchedule(application);
                         break;
                 }
             }
@@ -251,6 +260,7 @@ namespace BBI.JD
 
             bool useMass = PlaceAtMass && cv.MassIsValid;
             XYZ location = useMass ? cv.MassCentroid : cv.Centroid;
+            XYZ reported = location - (ReferenceOrigin ?? XYZ.Zero);
 
             EnsureFamilyLoaded(application);
 
@@ -262,6 +272,16 @@ namespace BBI.JD
             if (familySymbol == null)
             {
                 return;
+            }
+
+            // Best effort - a marker without schedulable parameters is still useful.
+            try
+            {
+                CgSharedParameters.EnsureBound(document, familySymbol.Category);
+            }
+            catch (Exception)
+            {
+                // carry on without shared parameters
             }
 
             Element host = elements[0];
@@ -282,14 +302,68 @@ namespace BBI.JD
                 ? document.Create.NewFamilyInstance(location, familySymbol, host, level, StructuralType.NonStructural)
                 : document.Create.NewFamilyInstance(location, familySymbol, host, StructuralType.NonStructural);
 
-            Parameter coordinate = familyInstance.LookupParameter(CoordinateParameterName);
-            coordinate?.Set(FormatPoint(location));
+            string coordinateText = FormatPoint(reported);
+
+            Parameter legacy = familyInstance.LookupParameter(CoordinateParameterName);
+            legacy?.Set(coordinateText);
+
+            WriteMarkerParameters(familyInstance, reported, coordinateText, useMass);
 
             markerIds.Add(familyInstance.Id);
 
             transaction.Commit();
 
             CrtlApplication.RefreshPane();
+        }
+
+        private void WriteMarkerParameters(FamilyInstance fi, XYZ reported, string coordinateText, bool useMass)
+        {
+            SetParam(fi, CgSharedParameters.Marker, 1);
+            SetParam(fi, CgSharedParameters.LiftName, LiftName ?? string.Empty);
+            SetParam(fi, CgSharedParameters.Weighting, useMass ? "mass" : "volume");
+            SetParam(fi, CgSharedParameters.Reference, string.IsNullOrEmpty(ReferenceLabel) ? "Internal origin" : ReferenceLabel);
+            SetParam(fi, CgSharedParameters.Coordinates, coordinateText);
+            SetParam(fi, CgSharedParameters.X, reported.X);
+            SetParam(fi, CgSharedParameters.Y, reported.Y);
+            SetParam(fi, CgSharedParameters.Z, reported.Z);
+            SetParam(fi, CgSharedParameters.Date, DateTime.Now.ToString("yyyy-MM-dd HH:mm"));
+
+            if (cv != null && cv.IsValid)
+            {
+                SetParam(fi, CgSharedParameters.Volume, cv.Volume);
+            }
+
+            if (useMass && cv != null && cv.MassIsValid)
+            {
+                SetParam(fi, CgSharedParameters.Weight, cv.Mass);
+            }
+        }
+
+        private static void SetParam(FamilyInstance fi, CgSharedParameters.ParamDef def, double value)
+        {
+            Parameter p = fi.get_Parameter(def.Guid);
+            if (p != null && !p.IsReadOnly)
+            {
+                p.Set(value);
+            }
+        }
+
+        private static void SetParam(FamilyInstance fi, CgSharedParameters.ParamDef def, int value)
+        {
+            Parameter p = fi.get_Parameter(def.Guid);
+            if (p != null && !p.IsReadOnly)
+            {
+                p.Set(value);
+            }
+        }
+
+        private static void SetParam(FamilyInstance fi, CgSharedParameters.ParamDef def, string value)
+        {
+            Parameter p = fi.get_Parameter(def.Guid);
+            if (p != null && !p.IsReadOnly)
+            {
+                p.Set(value ?? string.Empty);
+            }
         }
 
         private string FormatPoint(XYZ p)
@@ -323,6 +397,125 @@ namespace BBI.JD
             markerIds.Clear();
 
             CrtlApplication.RefreshPane();
+        }
+
+        private void CreateSchedule(UIApplication application)
+        {
+            UIDocument uiDoc = application.ActiveUIDocument;
+            Document document = uiDoc.Document;
+
+            Category category = GetMarkerCategory(document);
+            if (category == null)
+            {
+                return;
+            }
+
+            try
+            {
+                CgSharedParameters.EnsureBound(document, category);
+            }
+            catch (Exception)
+            {
+                // continue - schedule can still be created with whatever is bound
+            }
+
+            Dictionary<string, ElementId> paramIds = new();
+            foreach (CgSharedParameters.ParamDef d in CgSharedParameters.All)
+            {
+                SharedParameterElement spe = SharedParameterElement.Lookup(document, d.Guid);
+                if (spe != null)
+                {
+                    paramIds[d.Name] = spe.Id;
+                }
+            }
+
+            string[] columns =
+            {
+                "CG_Marker", "CG_LiftName", "CG_Weight", "CG_Volume",
+                "CG_X", "CG_Y", "CG_Z", "CG_Reference", "CG_Weighting", "CG_Date"
+            };
+
+            using Transaction transaction = new(document);
+            transaction.Start("Create Center of Gravity schedule");
+
+            ViewSchedule schedule = ViewSchedule.CreateSchedule(document, category.Id);
+            schedule.Name = UniqueViewName(document, "Center of Gravity");
+
+            ScheduleDefinition definition = schedule.Definition;
+            IList<SchedulableField> schedulable = definition.GetSchedulableFields();
+
+            ScheduleField markerField = null;
+
+            foreach (string name in columns)
+            {
+                if (!paramIds.TryGetValue(name, out ElementId pid))
+                {
+                    continue;
+                }
+
+                SchedulableField sf = schedulable.FirstOrDefault(x => x.ParameterId == pid);
+                if (sf == null)
+                {
+                    continue;
+                }
+
+                ScheduleField field = definition.AddField(sf);
+
+                if (name == "CG_Marker")
+                {
+                    markerField = field;
+                    field.IsHidden = true;
+                }
+            }
+
+            if (markerField != null)
+            {
+                definition.AddFilter(new ScheduleFilter(markerField.FieldId, ScheduleFilterType.Equal, 1));
+            }
+
+            transaction.Commit();
+
+            uiDoc.RequestViewChange(schedule);
+        }
+
+        private Category GetMarkerCategory(Document document)
+        {
+            if (family != null && family.IsValidObject)
+            {
+                foreach (ElementId id in family.GetFamilySymbolIds())
+                {
+                    if (document.GetElement(id) is FamilySymbol fs && fs.Category != null)
+                    {
+                        return fs.Category;
+                    }
+                }
+            }
+
+            return Category.GetCategory(document, BuiltInCategory.OST_GenericModel);
+        }
+
+        private static string UniqueViewName(Document document, string baseName)
+        {
+            HashSet<string> used = new(new FilteredElementCollector(document)
+                .OfClass(typeof(View))
+                .Cast<View>()
+                .Select(v => v.Name));
+
+            if (!used.Contains(baseName))
+            {
+                return baseName;
+            }
+
+            for (int i = 2; i < 1000; i++)
+            {
+                string candidate = $"{baseName} {i}";
+                if (!used.Contains(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            return $"{baseName} {Guid.NewGuid():N}";
         }
     }
 }
