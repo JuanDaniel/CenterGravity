@@ -10,6 +10,15 @@ namespace BBI.JD
         public ElementId Id { get; set; }
         public double Volume { get; set; }
         public XYZ Centroid { get; set; }
+
+        /// <summary>Mass in Revit internal units; 0 when no density was available.</summary>
+        public double Mass { get; set; }
+
+        /// <summary>Effective mass density used (internal units); 0 when unknown.</summary>
+        public double Density { get; set; }
+
+        /// <summary>True when a real mass (from material density) was found for this element.</summary>
+        public bool MassKnown { get; set; }
     }
 
     public class CentroidVolume
@@ -18,17 +27,32 @@ namespace BBI.JD
         {
             Centroid = XYZ.Zero;
             Volume = 0.0;
+            MassCentroid = XYZ.Zero;
+            Mass = 0.0;
             SkippedElementIds = new List<ElementId>();
+            NoDensityElementIds = new List<ElementId>();
             Contributions = new List<ElementContribution>();
         }
 
         public XYZ Centroid { get; set; }
         public double Volume { get; set; }
 
+        /// <summary>Mass-weighted centre of gravity (internal units). Zero when no mass is known.</summary>
+        public XYZ MassCentroid { get; set; }
+
+        /// <summary>Total mass of the elements that had a known density (internal units).</summary>
+        public double Mass { get; set; }
+
+        /// <summary>True when every contributing element had a known mass, so MassCentroid is exact.</summary>
+        public bool MassComplete { get; set; }
+
         /// <summary>Elements that carried no usable solid geometry and were left out of the calculation.</summary>
         public List<ElementId> SkippedElementIds { get; }
 
-        /// <summary>Per-element volume / centroid, in the order the elements were supplied.</summary>
+        /// <summary>Elements that contributed volume but had no density (excluded from the mass result).</summary>
+        public List<ElementId> NoDensityElementIds { get; }
+
+        /// <summary>Per-element volume / centroid / mass, in the order the elements were supplied.</summary>
         public List<ElementContribution> Contributions { get; }
 
         /// <summary>True when the result is a real, finite centroid backed by a non-zero volume.</summary>
@@ -40,6 +64,18 @@ namespace BBI.JD
                     && Math.Abs(Volume) > GeometryUtils.VolumeTolerance
                     && !double.IsNaN(Centroid.X) && !double.IsNaN(Centroid.Y) && !double.IsNaN(Centroid.Z)
                     && !double.IsInfinity(Centroid.X) && !double.IsInfinity(Centroid.Y) && !double.IsInfinity(Centroid.Z);
+            }
+        }
+
+        /// <summary>True when the mass-weighted centre of gravity is finite and backed by a non-zero mass.</summary>
+        public bool MassIsValid
+        {
+            get
+            {
+                return MassCentroid != null
+                    && Math.Abs(Mass) > GeometryUtils.MassTolerance
+                    && !double.IsNaN(MassCentroid.X) && !double.IsNaN(MassCentroid.Y) && !double.IsNaN(MassCentroid.Z)
+                    && !double.IsInfinity(MassCentroid.X) && !double.IsInfinity(MassCentroid.Y) && !double.IsInfinity(MassCentroid.Z);
             }
         }
 
@@ -59,6 +95,9 @@ namespace BBI.JD
         // Volumes are handled in internal units (cubic feet); anything below this
         // is treated as "no volume" to avoid dividing by (almost) zero.
         internal const double VolumeTolerance = 1e-9;
+
+        // Same idea for mass (internal units).
+        internal const double MassTolerance = 1e-6;
 
         public static CentroidVolume GetCentroid(Solid solid)
         {
@@ -218,27 +257,60 @@ namespace BBI.JD
 
         public static CentroidVolume GetCentroid(List<Element> elements, Options opt)
         {
+            return GetCentroid(elements, opt, null);
+        }
+
+        /// <summary>
+        /// Combined centre of gravity for a set of elements. Always computes the
+        /// volume-weighted result; when <paramref name="density"/> is supplied it also
+        /// computes the mass-weighted result (each element weighted by volume x density).
+        /// </summary>
+        public static CentroidVolume GetCentroid(List<Element> elements, Options opt, IDensityProvider density)
+        {
             CentroidVolume cv = new();
 
             foreach (var element in elements)
             {
                 CentroidVolume cv1 = GetCentroid(element, opt);
 
-                if (cv1 != null && cv1.IsValid)
-                {
-                    cv.Contributions.Add(new ElementContribution
-                    {
-                        Id = element.Id,
-                        Volume = cv1.Volume,
-                        Centroid = cv1.Centroid
-                    });
-
-                    cv.Centroid += cv1.Volume * cv1.Centroid;
-                    cv.Volume += cv1.Volume;
-                }
-                else
+                if (cv1 == null || !cv1.IsValid)
                 {
                     cv.SkippedElementIds.Add(element.Id);
+                    continue;
+                }
+
+                double mass = 0.0;
+                bool massKnown = false;
+
+                if (density != null)
+                {
+                    mass = ComputeMass(element, cv1.Volume, density, out massKnown);
+                }
+
+                cv.Contributions.Add(new ElementContribution
+                {
+                    Id = element.Id,
+                    Volume = cv1.Volume,
+                    Centroid = cv1.Centroid,
+                    Mass = mass,
+                    MassKnown = massKnown,
+                    Density = (massKnown && cv1.Volume > VolumeTolerance) ? mass / cv1.Volume : 0.0
+                });
+
+                cv.Centroid += cv1.Volume * cv1.Centroid;
+                cv.Volume += cv1.Volume;
+
+                if (density != null)
+                {
+                    if (massKnown)
+                    {
+                        cv.MassCentroid += mass * cv1.Centroid;
+                        cv.Mass += mass;
+                    }
+                    else
+                    {
+                        cv.NoDensityElementIds.Add(element.Id);
+                    }
                 }
             }
 
@@ -253,7 +325,77 @@ namespace BBI.JD
                 cv.Volume = 0.0;
             }
 
+            if (Math.Abs(cv.Mass) > MassTolerance)
+            {
+                cv.MassCentroid /= cv.Mass;
+                cv.MassComplete = cv.Contributions.Count > 0 && cv.NoDensityElementIds.Count == 0;
+            }
+            else
+            {
+                cv.MassCentroid = XYZ.Zero;
+                cv.Mass = 0.0;
+                cv.MassComplete = false;
+            }
+
             return cv;
+        }
+
+        /// <summary>
+        /// Element mass in internal units. Prefers per-material volumes x per-material
+        /// density; falls back to (element volume x element density).
+        /// </summary>
+        private static double ComputeMass(Element e, double elementVolume, IDensityProvider density, out bool known)
+        {
+            known = false;
+            double mass = 0.0;
+            bool any = false;
+
+            try
+            {
+                foreach (ElementId matId in e.GetMaterialIds(false))
+                {
+                    double materialVolume;
+                    try
+                    {
+                        materialVolume = e.GetMaterialVolume(matId);
+                    }
+                    catch (Exception)
+                    {
+                        materialVolume = 0.0;
+                    }
+
+                    if (materialVolume <= 0.0)
+                    {
+                        continue;
+                    }
+
+                    double? d = density.GetMaterialDensity(matId);
+
+                    if (d.HasValue && d.Value > 0.0)
+                    {
+                        mass += materialVolume * d.Value;
+                        any = true;
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // element does not support material queries
+            }
+
+            if (!any && elementVolume > VolumeTolerance)
+            {
+                double? d = density.GetElementDensity(e);
+
+                if (d.HasValue && d.Value > 0.0)
+                {
+                    mass = elementVolume * d.Value;
+                    any = true;
+                }
+            }
+
+            known = any && mass > 0.0;
+            return known ? mass : 0.0;
         }
 
         public static bool IsPhysicalElement(this Element e)

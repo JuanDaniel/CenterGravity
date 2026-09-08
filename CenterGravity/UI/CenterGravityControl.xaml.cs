@@ -24,6 +24,12 @@ namespace BBI.JD.UI
                 PlaceRequested = () => MakeRequest(RequestId.PlaceCenterGravity),
                 ClearRequested = () => MakeRequest(RequestId.RemoveCenterGravity)
             };
+            vm.DensityChanged = () =>
+            {
+                this.handler.DefaultDensityInternal = vm.DefaultDensityInternal;
+                MakeRequest(RequestId.Select);
+            };
+            vm.WeightModeChanged = () => this.handler.PlaceAtMass = vm.WeightByMass;
 
             DataContext = vm;
 
@@ -48,7 +54,8 @@ namespace BBI.JD.UI
                     handler.CV,
                     handler.Rows,
                     handler.ProjectBasePoint,
-                    handler.SurveyPoint);
+                    handler.SurveyPoint,
+                    handler.ExpandedContainerCount);
             }
 
             if (Dispatcher.CheckAccess())

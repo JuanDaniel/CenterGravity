@@ -25,6 +25,7 @@ namespace BBI.JD
         private Units units;
         private XYZ projectBasePoint = XYZ.Zero;
         private XYZ surveyPoint = XYZ.Zero;
+        private int expandedContainerCount;
 
         public Request Request => request;
 
@@ -37,6 +38,13 @@ namespace BBI.JD
         public XYZ SurveyPoint => surveyPoint;
         public bool HasMarkers => markerIds.Count > 0;
         public bool HasResult => cv != null && cv.IsValid;
+        public int ExpandedContainerCount => expandedContainerCount;
+
+        /// <summary>Fallback mass density (internal units) applied when a material has none. Null = no fallback.</summary>
+        public double? DefaultDensityInternal { get; set; }
+
+        /// <summary>When true, "Place marker" drops the point at the mass-weighted centre of gravity.</summary>
+        public bool PlaceAtMass { get; set; }
 
         public void Execute(UIApplication application)
         {
@@ -77,40 +85,95 @@ namespace BBI.JD
             elements = new List<Element>();
             cv = null;
             rows = new List<CgRow>();
+            expandedContainerCount = 0;
 
             ICollection<ElementId> ids = uiDoc.Selection.GetElementIds();
 
             if (ids.Count > 0)
             {
-                elements = new FilteredElementCollector(document, ids)
-                    .WhereElementIsNotElementType()
+                elements = ExpandContainers(document, ids, out expandedContainerCount)
                     .Where(e => e.IsPhysicalElement())
                     .ToList();
             }
 
             if (elements.Count > 0)
             {
-                cv = GeometryUtils.GetCentroid(elements, new Options());
+                IDensityProvider density = new RevitDensityProvider(document, DefaultDensityInternal);
+
+                cv = GeometryUtils.GetCentroid(elements, new Options(), density);
                 rows = BuildRows();
             }
 
             CrtlApplication.RefreshPane();
         }
 
+        /// <summary>Replace groups / assemblies in the selection with their member elements (nested too).</summary>
+        private static List<Element> ExpandContainers(Document document, ICollection<ElementId> ids, out int containerCount)
+        {
+            containerCount = 0;
+
+            List<Element> result = new();
+            HashSet<ElementId> seen = new();
+            Queue<ElementId> queue = new(ids);
+            int guard = 0;
+
+            while (queue.Count > 0 && guard++ < 50000)
+            {
+                ElementId id = queue.Dequeue();
+
+                if (!seen.Add(id))
+                {
+                    continue;
+                }
+
+                Element e = document.GetElement(id);
+
+                if (e == null)
+                {
+                    continue;
+                }
+
+                if (e is Group group)
+                {
+                    containerCount++;
+                    foreach (ElementId member in group.GetMemberIds())
+                    {
+                        queue.Enqueue(member);
+                    }
+                    continue;
+                }
+
+                if (e is AssemblyInstance assembly)
+                {
+                    containerCount++;
+                    foreach (ElementId member in assembly.GetMemberIds())
+                    {
+                        queue.Enqueue(member);
+                    }
+                    continue;
+                }
+
+                result.Add(e);
+            }
+
+            return result;
+        }
+
         private List<CgRow> BuildRows()
         {
-            Dictionary<ElementId, double> volumeById = cv.Contributions
+            Dictionary<ElementId, ElementContribution> byId = cv.Contributions
                 .GroupBy(c => c.Id)
-                .ToDictionary(g => g.Key, g => g.Sum(c => c.Volume));
+                .ToDictionary(g => g.Key, g => g.First());
 
             HashSet<ElementId> skipped = new(cv.SkippedElementIds);
+            ForgeTypeId massSpec = SpecTypeId.Mass;
 
             List<CgRow> result = new();
 
             foreach (Element e in elements)
             {
-                bool isSkipped = skipped.Contains(e.Id) || !volumeById.ContainsKey(e.Id);
-                double volume = isSkipped ? 0.0 : volumeById[e.Id];
+                bool isSkipped = skipped.Contains(e.Id) || !byId.ContainsKey(e.Id);
+                ElementContribution c = isSkipped ? null : byId[e.Id];
 
                 result.Add(new CgRow
                 {
@@ -118,10 +181,15 @@ namespace BBI.JD
                     Category = e.Category?.Name ?? string.Empty,
                     Name = e.Name,
                     Skipped = isSkipped,
-                    VolumeInternal = volume,
+                    VolumeInternal = c?.Volume ?? 0.0,
                     Volume = isSkipped
                         ? "-"
-                        : UnitFormatUtils.Format(units, SpecTypeId.Volume, volume, false)
+                        : UnitFormatUtils.Format(units, SpecTypeId.Volume, c.Volume, false),
+                    MassInternal = c?.Mass ?? 0.0,
+                    MassKnown = c != null && c.MassKnown,
+                    Mass = (c != null && c.MassKnown)
+                        ? UnitFormatUtils.Format(units, massSpec, c.Mass, false)
+                        : "-"
                 });
             }
 
@@ -181,6 +249,9 @@ namespace BBI.JD
                 return;
             }
 
+            bool useMass = PlaceAtMass && cv.MassIsValid;
+            XYZ location = useMass ? cv.MassCentroid : cv.Centroid;
+
             EnsureFamilyLoaded(application);
 
             FamilySymbol familySymbol = family?
@@ -208,17 +279,27 @@ namespace BBI.JD
                 : null;
 
             FamilyInstance familyInstance = level != null
-                ? document.Create.NewFamilyInstance(cv.Centroid, familySymbol, host, level, StructuralType.NonStructural)
-                : document.Create.NewFamilyInstance(cv.Centroid, familySymbol, host, StructuralType.NonStructural);
+                ? document.Create.NewFamilyInstance(location, familySymbol, host, level, StructuralType.NonStructural)
+                : document.Create.NewFamilyInstance(location, familySymbol, host, StructuralType.NonStructural);
 
             Parameter coordinate = familyInstance.LookupParameter(CoordinateParameterName);
-            coordinate?.Set(cv.XYZToString(units.GetFormatOptions(SpecTypeId.Length)));
+            coordinate?.Set(FormatPoint(location));
 
             markerIds.Add(familyInstance.Id);
 
             transaction.Commit();
 
             CrtlApplication.RefreshPane();
+        }
+
+        private string FormatPoint(XYZ p)
+        {
+            FormatOptions fo = units.GetFormatOptions(SpecTypeId.Length);
+
+            return string.Format("{0}; {1}; {2}",
+                UnitUtils.ConvertFromInternalUnits(p.X, fo.GetUnitTypeId()),
+                UnitUtils.ConvertFromInternalUnits(p.Y, fo.GetUnitTypeId()),
+                UnitUtils.ConvertFromInternalUnits(p.Z, fo.GetUnitTypeId()));
         }
 
         private void RemoveMarkers(UIApplication application)

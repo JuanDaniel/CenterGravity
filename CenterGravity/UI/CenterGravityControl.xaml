@@ -4,10 +4,12 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              mc:Ignorable="d"
-             d:DesignWidth="320" d:DesignHeight="520"
-             MinWidth="260">
+             d:DesignWidth="340" d:DesignHeight="600"
+             MinWidth="280">
 
     <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
         <Style x:Key="Caption" TargetType="TextBlock">
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Margin" Value="0,8,0,2" />
@@ -24,7 +26,8 @@
     <Grid Margin="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" MinHeight="120" />
+            <RowDefinition Height="*" MinHeight="110" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -61,17 +64,41 @@
                 <DataGridTextColumn Header="Category" Binding="{Binding Category}" Width="*" />
                 <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*" />
                 <DataGridTextColumn Header="Volume" Binding="{Binding Volume}" Width="Auto" />
+                <DataGridTextColumn Header="Mass" Binding="{Binding Mass}" Width="Auto" />
             </DataGrid.Columns>
         </DataGrid>
 
         <StackPanel Grid.Row="2">
+            <TextBlock Text="Weight by" Style="{StaticResource Caption}" />
+            <ComboBox ItemsSource="{Binding WeightOptions}"
+                      SelectedItem="{Binding SelectedWeight, Mode=TwoWay}"
+                      DisplayMemberPath="Label" />
+
+            <Grid Margin="0,4,0,0" Visibility="{Binding WeightByMass, Converter={StaticResource BoolToVis}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="90" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Default density" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <TextBox   Grid.Column="1" Text="{Binding DefaultDensityText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                <TextBlock Grid.Column="2" Text="{Binding DensityUnitLabel}" VerticalAlignment="Center" Opacity="0.8" Margin="6,0,0,0" TextTrimming="CharacterEllipsis" />
+            </Grid>
+
             <TextBlock Text="Coordinates measured from" Style="{StaticResource Caption}" />
             <ComboBox ItemsSource="{Binding ReferenceOptions}"
                       SelectedItem="{Binding SelectedReference, Mode=TwoWay}"
                       DisplayMemberPath="Label" />
         </StackPanel>
 
-        <Grid Grid.Row="3" Margin="0,8,0,0">
+        <Border Grid.Row="3"
+                Margin="0,8,0,0" Padding="6,4"
+                Background="#33C08040"
+                Visibility="{Binding HasWarning, Converter={StaticResource BoolToVis}}">
+            <TextBlock Text="{Binding Warning}" TextWrapping="Wrap" />
+        </Border>
+
+        <Grid Grid.Row="4" Margin="0,8,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
@@ -82,25 +109,29 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <TextBlock Grid.Row="0" Grid.Column="0" Text="Volume" VerticalAlignment="Center" Margin="0,2,8,2" />
             <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding Volume, Mode=OneWay}" Style="{StaticResource ValueBox}" Margin="0,2" />
 
-            <TextBlock Grid.Row="1" Grid.Column="0" Text="X" VerticalAlignment="Center" Margin="0,2,8,2" />
-            <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding X, Mode=OneWay}" Style="{StaticResource ValueBox}" Margin="0,2" />
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Mass" VerticalAlignment="Center" Margin="0,2,8,2" />
+            <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding Mass, Mode=OneWay}" Style="{StaticResource ValueBox}" Margin="0,2" />
 
-            <TextBlock Grid.Row="2" Grid.Column="0" Text="Y" VerticalAlignment="Center" Margin="0,2,8,2" />
-            <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding Y, Mode=OneWay}" Style="{StaticResource ValueBox}" Margin="0,2" />
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="X" VerticalAlignment="Center" Margin="0,2,8,2" />
+            <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding X, Mode=OneWay}" Style="{StaticResource ValueBox}" Margin="0,2" />
 
-            <TextBlock Grid.Row="3" Grid.Column="0" Text="Z" VerticalAlignment="Center" Margin="0,2,8,2" />
-            <TextBox   Grid.Row="3" Grid.Column="1" Text="{Binding Z, Mode=OneWay}" Style="{StaticResource ValueBox}" Margin="0,2" />
+            <TextBlock Grid.Row="3" Grid.Column="0" Text="Y" VerticalAlignment="Center" Margin="0,2,8,2" />
+            <TextBox   Grid.Row="3" Grid.Column="1" Text="{Binding Y, Mode=OneWay}" Style="{StaticResource ValueBox}" Margin="0,2" />
 
-            <TextBlock Grid.Row="4" Grid.Column="0" Text="(X; Y; Z)" VerticalAlignment="Center" Margin="0,2,8,2" />
-            <TextBox   Grid.Row="4" Grid.Column="1" Text="{Binding Xyz, Mode=OneWay}" Style="{StaticResource ValueBox}" Margin="0,2" />
+            <TextBlock Grid.Row="4" Grid.Column="0" Text="Z" VerticalAlignment="Center" Margin="0,2,8,2" />
+            <TextBox   Grid.Row="4" Grid.Column="1" Text="{Binding Z, Mode=OneWay}" Style="{StaticResource ValueBox}" Margin="0,2" />
+
+            <TextBlock Grid.Row="5" Grid.Column="0" Text="(X; Y; Z)" VerticalAlignment="Center" Margin="0,2,8,2" />
+            <TextBox   Grid.Row="5" Grid.Column="1" Text="{Binding Xyz, Mode=OneWay}" Style="{StaticResource ValueBox}" Margin="0,2" />
         </Grid>
 
-        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
             <Button Content="Place marker" Command="{Binding PlaceCommand}" Padding="12,4" Margin="0,0,6,0" />
             <Button Content="Copy" Command="{Binding CopyCommand}" Padding="12,4" Margin="0,0,6,0" />
             <Button Content="Export CSV" Command="{Binding ExportCsvCommand}" Padding="12,4" Margin="0,0,6,0" />
