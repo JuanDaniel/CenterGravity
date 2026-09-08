@@ -1,6 +1,7 @@
-﻿using Autodesk.Revit.DB;
+using Autodesk.Revit.ApplicationServices;
+using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using BBI.JD.Forms;
+using BBI.JD.UI;
 using System;
 using System.IO;
 using System.Linq;
@@ -16,12 +17,26 @@ namespace BBI.JD
         {
             try
             {
-                CrtlApplication.thisApp.ShowForm(commandData.Application);
+                DockablePane pane = commandData.Application.GetDockablePane(CrtlApplication.PaneId);
+
+                if (pane == null)
+                {
+                    message = "Center Gravity pane is not registered.";
+                    return Result.Failed;
+                }
+
+                if (pane.IsShown())
+                {
+                    pane.Hide();
+                }
+                else
+                {
+                    pane.Show();
+                }
             }
             catch (Exception ex)
             {
                 message = ex.Message;
-
                 return Result.Failed;
             }
 
@@ -31,51 +46,78 @@ namespace BBI.JD
 
     public class CrtlApplication : IExternalApplication
     {
-        internal static CrtlApplication thisApp = null;
-        private CenterGravityForm form;
+        public static readonly DockablePaneId PaneId =
+            new DockablePaneId(new Guid("e6f1c2a3-9b84-4d5e-a7c6-1f2b3c4d5e6f"));
+
+        private static CenterGravityControl control;
+        private static RequestHandler handler;
+        private static ExternalEvent externalEvent;
+        private static UIApplication uiApplication;
+
+        internal static CenterGravityControl Control => control;
 
         public Result OnStartup(UIControlledApplication application)
         {
-            form = null;
-            thisApp = this;
-
             string assemblyPath = Assembly.GetExecutingAssembly().Location;
             string folder = new FileInfo(assemblyPath).Directory.FullName;
 
-            // Create a customm ribbon tab
+            // Ribbon: JDS > Tools > Center Gravity
             string tabName = "JDS";
             Autodesk.Windows.RibbonTab tab = CreateRibbonTab(application, tabName);
+            RibbonPanel ribbonPanel = CreateRibbonPanel(application, tab, "Tools");
 
-            // Add new ribbon panel
-            string panelName = "Tools";
-            RibbonPanel ribbonPanel = CreateRibbonPanel(application, tab, panelName);
-
-            // Create a push button in the ribbon panel
             PushButton pushButton = ribbonPanel.AddItem(new PushButtonData(
                 "CenterGravity", "Center Gravity",
                 assemblyPath, "BBI.JD.Command")) as PushButton;
-            
-            // Set tooltip info
+
             pushButton.ToolTip = "Represents Center Gravity point for model elements.";
+            pushButton.LargeImage = new BitmapImage(new Uri(Path.Combine(folder, "Resources/icon_32x32.png")));
+            pushButton.SetContextualHelp(new ContextualHelp(ContextualHelpType.ChmFile, Path.Combine(folder, "Resources/help.chm")));
 
-            // Set the large image shown on button
-            Uri uriImage = new(Path.Combine(folder, "Resources/icon_32x32.png"));
-            pushButton.LargeImage = new BitmapImage(uriImage);
+            // The WPF control is created once Revit is fully initialized (below),
+            // but the pane must be registered here, in OnStartup.
+            application.RegisterDockablePane(PaneId, "Center Gravity", new CenterGravityPaneProvider());
 
-            ContextualHelp help = new(ContextualHelpType.ChmFile, Path.Combine(folder, "Resources/help.chm"));
-            pushButton.SetContextualHelp(help);
+            application.ControlledApplication.ApplicationInitialized += OnApplicationInitialized;
 
             return Result.Succeeded;
         }
 
         public Result OnShutdown(UIControlledApplication application)
         {
-            if (form != null && form.Visible)
+            if (uiApplication != null)
             {
-                form.Close();
+                try { uiApplication.SelectionChanged -= OnSelectionChanged; }
+                catch (Exception) { /* ignore */ }
             }
 
             return Result.Succeeded;
+        }
+
+        private void OnApplicationInitialized(object sender, Autodesk.Revit.DB.Events.ApplicationInitializedEventArgs e)
+        {
+            uiApplication = new UIApplication(sender as Application);
+
+            handler = new RequestHandler();
+            externalEvent = ExternalEvent.Create(handler);
+            control = new CenterGravityControl(handler, externalEvent);
+
+            uiApplication.SelectionChanged += OnSelectionChanged;
+        }
+
+        private static void OnSelectionChanged(object sender, Autodesk.Revit.UI.Events.SelectionChangedEventArgs e)
+        {
+            control?.OnRevitSelectionChanged();
+        }
+
+        internal static void RefreshPane()
+        {
+            control?.RefreshFromHandler();
+        }
+
+        internal static void ShowError(Exception ex)
+        {
+            control?.ShowError(ex);
         }
 
         private Autodesk.Windows.RibbonTab CreateRibbonTab(UIControlledApplication application, string tabName)
@@ -85,7 +127,6 @@ namespace BBI.JD
             if (tab == null)
             {
                 application.CreateRibbonTab(tabName);
-
                 tab = Autodesk.Windows.ComponentManager.Ribbon.Tabs.FirstOrDefault(x => x.Id == tabName);
             }
 
@@ -99,36 +140,6 @@ namespace BBI.JD
             panel ??= application.CreateRibbonPanel(tab.Name, panelName);
 
             return panel;
-        }
-
-        public void ShowForm(UIApplication application)
-        {
-            if (form == null || form.IsDisposed)
-            {
-                // A new handler to handle request posting by the dialog
-                RequestHandler handler = new RequestHandler();
-
-                // External Event for the dialog to use (to post requests)
-                ExternalEvent exEvent = ExternalEvent.Create(handler);
-
-                form = new CenterGravityForm(exEvent, handler, application);
-                form.Show();
-            }
-        }
-
-        public void UpdateFormValues()
-        {
-            form?.UpdateValues();
-        }
-
-        public void UpdateFormCentroidValues()
-        {
-            form?.UpdateCentroidValues();
-        }
-
-        public void ShowFormMessageError(Exception ex)
-        {
-            form?.ShowMessageError(ex);
         }
     }
 }

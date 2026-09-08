@@ -1,6 +1,7 @@
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using Autodesk.Revit.UI;
+using BBI.JD.UI;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -18,46 +19,24 @@ namespace BBI.JD
         private readonly List<ElementId> markerIds = new();
 
         private Family family;
-        private int index = -1;
         private List<Element> elements = new();
         private CentroidVolume cv;
+        private List<CgRow> rows = new();
+        private Units units;
+        private XYZ projectBasePoint = XYZ.Zero;
+        private XYZ surveyPoint = XYZ.Zero;
 
-        public Request Request
-        {
-            get { return request; }
-        }
+        public Request Request => request;
 
-        public string GetName()
-        {
-            return "Center Gravity";
-        }
+        public string GetName() => "Center Gravity";
 
-        public int Index
-        {
-            get { return index; }
-        }
-
-        public List<Element> Elements
-        {
-            get { return elements; }
-        }
-
-        public CentroidVolume CV
-        {
-            get { return cv; }
-        }
-
-        public int ChangeIndex(int value)
-        {
-            index += value;
-
-            return index;
-        }
-
-        public void ClearElements()
-        {
-            elements?.Clear();
-        }
+        public CentroidVolume CV => cv;
+        public IReadOnlyList<CgRow> Rows => rows;
+        public Units CurrentUnits => units;
+        public XYZ ProjectBasePoint => projectBasePoint;
+        public XYZ SurveyPoint => surveyPoint;
+        public bool HasMarkers => markerIds.Count > 0;
+        public bool HasResult => cv != null && cv.IsValid;
 
         public void Execute(UIApplication application)
         {
@@ -66,39 +45,103 @@ namespace BBI.JD
                 switch (Request.Take())
                 {
                     case RequestId.None:
-                        {
-                            return;
-                        }
+                        return;
                     case RequestId.CenterGravityFamily:
-                        {
-                            EnsureFamilyLoaded(application);
-                            break;
-                        }
+                        EnsureFamilyLoaded(application);
+                        break;
                     case RequestId.Select:
-                        {
-                            SelectionChanged(application);
-                            break;
-                        }
-                    case RequestId.Update:
-                        {
-                            UpdateValues(application);
-                            break;
-                        }
-                    case RequestId.VisualizeCenterGravity:
-                        {
-                            UpdateCentroidValues(application);
-                            break;
-                        }
+                        Recompute(application);
+                        break;
+                    case RequestId.PlaceCenterGravity:
+                        PlaceMarker(application);
+                        break;
                     case RequestId.RemoveCenterGravity:
-                        {
-                            RemoveCenterGravityPoints(application);
-                            break;
-                        }
+                        RemoveMarkers(application);
+                        break;
                 }
             }
             catch (Exception ex)
             {
-                CrtlApplication.thisApp.ShowFormMessageError(ex);
+                CrtlApplication.ShowError(ex);
+            }
+        }
+
+        private void Recompute(UIApplication application)
+        {
+            UIDocument uiDoc = application.ActiveUIDocument;
+            Document document = uiDoc.Document;
+
+            units = document.GetUnits();
+            ReadReferencePoints(document);
+
+            elements = new List<Element>();
+            cv = null;
+            rows = new List<CgRow>();
+
+            ICollection<ElementId> ids = uiDoc.Selection.GetElementIds();
+
+            if (ids.Count > 0)
+            {
+                elements = new FilteredElementCollector(document, ids)
+                    .WhereElementIsNotElementType()
+                    .Where(e => e.IsPhysicalElement())
+                    .ToList();
+            }
+
+            if (elements.Count > 0)
+            {
+                cv = GeometryUtils.GetCentroid(elements, new Options());
+                rows = BuildRows();
+            }
+
+            CrtlApplication.RefreshPane();
+        }
+
+        private List<CgRow> BuildRows()
+        {
+            Dictionary<ElementId, double> volumeById = cv.Contributions
+                .GroupBy(c => c.Id)
+                .ToDictionary(g => g.Key, g => g.Sum(c => c.Volume));
+
+            HashSet<ElementId> skipped = new(cv.SkippedElementIds);
+
+            List<CgRow> result = new();
+
+            foreach (Element e in elements)
+            {
+                bool isSkipped = skipped.Contains(e.Id) || !volumeById.ContainsKey(e.Id);
+                double volume = isSkipped ? 0.0 : volumeById[e.Id];
+
+                result.Add(new CgRow
+                {
+                    Id = e.Id.ToString(),
+                    Category = e.Category?.Name ?? string.Empty,
+                    Name = e.Name,
+                    Skipped = isSkipped,
+                    VolumeInternal = volume,
+                    Volume = isSkipped
+                        ? "-"
+                        : UnitFormatUtils.Format(units, SpecTypeId.Volume, volume, false)
+                });
+            }
+
+            return result;
+        }
+
+        private void ReadReferencePoints(Document document)
+        {
+            try
+            {
+                BasePoint pbp = BasePoint.GetProjectBasePoint(document);
+                BasePoint sp = BasePoint.GetSurveyPoint(document);
+
+                projectBasePoint = pbp?.Position ?? XYZ.Zero;
+                surveyPoint = sp?.Position ?? XYZ.Zero;
+            }
+            catch (Exception)
+            {
+                projectBasePoint = XYZ.Zero;
+                surveyPoint = XYZ.Zero;
             }
         }
 
@@ -129,74 +172,19 @@ namespace BBI.JD
             }
         }
 
-        private void SelectionChanged(UIApplication application)
-        {
-            UIDocument uiDoc = application.ActiveUIDocument;
-            Document document = uiDoc.Document;
-
-            // Reset INDEX and ELEMENTS
-            index = -1;
-            elements = new List<Element>();
-            cv = null;
-
-            ICollection<ElementId> ids = uiDoc.Selection.GetElementIds();
-
-            if (ids.Count > 0)
-            {
-                elements = new FilteredElementCollector(document, ids)
-                    .WhereElementIsNotElementType()
-                        .Where(e => e.IsPhysicalElement())
-                            .ToList();
-
-                if (elements.Count > 0)
-                {
-                    index = 0;
-
-                    UpdateCentroidValues(application);
-                }
-            }
-
-            UpdateValues(application);
-        }
-
-        private void UpdateValues(UIApplication application)
-        {
-            CrtlApplication.thisApp.UpdateFormValues();
-        }
-
-        private void UpdateCentroidValues(UIApplication application)
-        {
-            VisualizeCentroid(application);
-
-            CrtlApplication.thisApp.UpdateFormCentroidValues();
-        }
-
-        private void VisualizeCentroid(UIApplication application)
+        private void PlaceMarker(UIApplication application)
         {
             Document document = application.ActiveUIDocument.Document;
 
-            if (elements == null || elements.Count == 0)
-            {
-                return;
-            }
-
-            cv = GeometryUtils.GetCentroid(elements, new Options());
-
-            // No usable solid geometry in the selection: keep the (zeroed) result
-            // so the form can report it, but do not try to place a marker.
-            if (cv == null || !cv.IsValid)
+            if (cv == null || !cv.IsValid || elements.Count == 0)
             {
                 return;
             }
 
             EnsureFamilyLoaded(application);
 
-            if (family == null)
-            {
-                return;
-            }
-
-            FamilySymbol familySymbol = family.GetFamilySymbolIds()
+            FamilySymbol familySymbol = family?
+                .GetFamilySymbolIds()
                 .Select(id => document.GetElement(id) as FamilySymbol)
                 .FirstOrDefault(fs => fs != null && fs.FamilyName == FamilyName);
 
@@ -208,7 +196,7 @@ namespace BBI.JD
             Element host = elements[0];
 
             using Transaction transaction = new(document);
-            transaction.Start("Put graphical Center Gravity point");
+            transaction.Start("Place Center Gravity point");
 
             if (!familySymbol.IsActive)
             {
@@ -224,16 +212,16 @@ namespace BBI.JD
                 : document.Create.NewFamilyInstance(cv.Centroid, familySymbol, host, StructuralType.NonStructural);
 
             Parameter coordinate = familyInstance.LookupParameter(CoordinateParameterName);
-            coordinate?.Set(cv.XYZToString(
-                document.GetUnits().GetFormatOptions(SpecTypeId.Length)
-            ));
+            coordinate?.Set(cv.XYZToString(units.GetFormatOptions(SpecTypeId.Length)));
 
             markerIds.Add(familyInstance.Id);
 
             transaction.Commit();
+
+            CrtlApplication.RefreshPane();
         }
 
-        private void RemoveCenterGravityPoints(UIApplication application)
+        private void RemoveMarkers(UIApplication application)
         {
             Document document = application.ActiveUIDocument.Document;
 
@@ -252,9 +240,8 @@ namespace BBI.JD
             }
 
             markerIds.Clear();
-            elements = new List<Element>();
-            index = -1;
-            cv = null;
+
+            CrtlApplication.RefreshPane();
         }
     }
 }

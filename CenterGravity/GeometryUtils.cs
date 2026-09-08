@@ -4,6 +4,13 @@ using System.Collections.Generic;
 
 namespace BBI.JD
 {
+    /// <summary>Per-element contribution to a combined centre of gravity.</summary>
+    public class ElementContribution
+    {
+        public ElementId Id { get; set; }
+        public double Volume { get; set; }
+        public XYZ Centroid { get; set; }
+    }
 
     public class CentroidVolume
     {
@@ -12,6 +19,7 @@ namespace BBI.JD
             Centroid = XYZ.Zero;
             Volume = 0.0;
             SkippedElementIds = new List<ElementId>();
+            Contributions = new List<ElementContribution>();
         }
 
         public XYZ Centroid { get; set; }
@@ -19,6 +27,9 @@ namespace BBI.JD
 
         /// <summary>Elements that carried no usable solid geometry and were left out of the calculation.</summary>
         public List<ElementId> SkippedElementIds { get; }
+
+        /// <summary>Per-element volume / centroid, in the order the elements were supplied.</summary>
+        public List<ElementContribution> Contributions { get; }
 
         /// <summary>True when the result is a real, finite centroid backed by a non-zero volume.</summary>
         public bool IsValid
@@ -215,6 +226,13 @@ namespace BBI.JD
 
                 if (cv1 != null && cv1.IsValid)
                 {
+                    cv.Contributions.Add(new ElementContribution
+                    {
+                        Id = element.Id,
+                        Volume = cv1.Volume,
+                        Centroid = cv1.Centroid
+                    });
+
                     cv.Centroid += cv1.Volume * cv1.Centroid;
                     cv.Volume += cv1.Volume;
                 }

@@ -13,7 +13,7 @@ param(
     [string[]] $RevitVersions = @('2024', '2025', '2026', '2027'),
     [ValidateSet('Debug', 'Release')]
     [string]   $Configuration = 'Release',
-    [string]   $Version       = '1.1.0'
+    [string]   $Version       = '1.2.0'
 )
 
 $ErrorActionPreference = 'Stop'

@@ -1,4 +1,4 @@
-﻿using System.Threading;
+using System.Threading;
 
 namespace BBI.JD
 {
@@ -7,9 +7,8 @@ namespace BBI.JD
         None = 0,
         CenterGravityFamily = 1,
         Select = 2,
-        Update = 3,
-        VisualizeCenterGravity = 4,
-        RemoveCenterGravity = 5
+        PlaceCenterGravity = 3,
+        RemoveCenterGravity = 4
     }
 
     public class Request

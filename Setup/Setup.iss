@@ -2,7 +2,7 @@
 ; Run build.ps1 first to produce Setup\Output\CenterGravity.bundle, then compile this file.
 
 #define MyAppName "Center Gravity"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.2.0"
 #define MyAppPublisher "Juan Daniel SANTANA"
 #define MyAppURL "https://github.com/JuanDaniel/CenterGravity"
 
