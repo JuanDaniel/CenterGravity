@@ -26,6 +26,8 @@ namespace BBI.JD
         private XYZ projectBasePoint = XYZ.Zero;
         private XYZ surveyPoint = XYZ.Zero;
         private int expandedContainerCount;
+        private readonly List<XYZ> liftPoints = new();
+        private RiggingResult rigging;
 
         public Request Request => request;
 
@@ -52,6 +54,15 @@ namespace BBI.JD
         public string ReferenceLabel { get; set; }
         public string LiftName { get; set; }
 
+        /// <summary>How many lift points the next pick should collect (2 or 4).</summary>
+        public int LiftPointCount { get; set; } = 2;
+
+        /// <summary>Hook height above the centre of gravity (internal length), or null.</summary>
+        public double? HookHeightInternal { get; set; }
+
+        public IReadOnlyList<XYZ> LiftPoints => liftPoints;
+        public RiggingResult Rigging => rigging;
+
         public void Execute(UIApplication application)
         {
             try
@@ -75,6 +86,14 @@ namespace BBI.JD
                     case RequestId.CreateSchedule:
                         CreateSchedule(application);
                         break;
+                    case RequestId.PickLiftPoints:
+                        PickLiftPoints(application);
+                        break;
+                    case RequestId.ClearLiftPoints:
+                        liftPoints.Clear();
+                        rigging = null;
+                        CrtlApplication.RefreshPane();
+                        break;
                 }
             }
             catch (Exception ex)
@@ -95,6 +114,10 @@ namespace BBI.JD
             cv = null;
             rows = new List<CgRow>();
             expandedContainerCount = 0;
+
+            // Lift points belong to the previous centre of gravity.
+            liftPoints.Clear();
+            rigging = null;
 
             ICollection<ElementId> ids = uiDoc.Selection.GetElementIds();
 
@@ -476,6 +499,61 @@ namespace BBI.JD
             transaction.Commit();
 
             uiDoc.RequestViewChange(schedule);
+        }
+
+        private void PickLiftPoints(UIApplication application)
+        {
+            UIDocument uiDoc = application.ActiveUIDocument;
+
+            if (cv == null || !cv.IsValid)
+            {
+                return;
+            }
+
+            int count = LiftPointCount == 4 ? 4 : 2;
+            liftPoints.Clear();
+
+            try
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    XYZ p = uiDoc.Selection.PickPoint(
+                        string.Format("Center Gravity: pick lift point {0} of {1} (Esc to stop)", i + 1, count));
+                    liftPoints.Add(p);
+                }
+            }
+            catch (Autodesk.Revit.Exceptions.OperationCanceledException)
+            {
+                // keep whatever was picked so far
+            }
+
+            ComputeRigging();
+            CrtlApplication.RefreshPane();
+        }
+
+        private void ComputeRigging()
+        {
+            rigging = null;
+
+            if (cv == null || !cv.IsValid || liftPoints.Count < 2)
+            {
+                return;
+            }
+
+            bool massMode = PlaceAtMass && cv.MassIsValid;
+            XYZ cog = massMode ? cv.MassCentroid : cv.Centroid;
+
+            double weight = 0.0;
+            if (cv.MassIsValid)
+            {
+                weight = cv.Mass;
+            }
+            else if (DefaultDensityInternal.HasValue && DefaultDensityInternal.Value > 0)
+            {
+                weight = cv.Volume * DefaultDensityInternal.Value;
+            }
+
+            rigging = RiggingCalculator.Compute(cog, weight, liftPoints, HookHeightInternal ?? 0.0);
         }
 
         private Category GetMarkerCategory(Document document)

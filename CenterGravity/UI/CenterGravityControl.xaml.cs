@@ -30,6 +30,14 @@ namespace BBI.JD.UI
             };
             vm.ClearRequested = () => MakeRequest(RequestId.RemoveCenterGravity);
             vm.CreateScheduleRequested = () => MakeRequest(RequestId.CreateSchedule);
+            vm.PickLiftPointsRequested = n =>
+            {
+                this.handler.LiftPointCount = n;
+                this.handler.HookHeightInternal = vm.HookHeightInternal;
+                this.handler.PlaceAtMass = vm.WeightByMass;
+                MakeRequest(RequestId.PickLiftPoints);
+            };
+            vm.ClearLiftPointsRequested = () => MakeRequest(RequestId.ClearLiftPoints);
             vm.DensityChanged = () =>
             {
                 this.handler.DefaultDensityInternal = vm.DefaultDensityInternal;
@@ -62,6 +70,7 @@ namespace BBI.JD.UI
                     handler.ProjectBasePoint,
                     handler.SurveyPoint,
                     handler.ExpandedContainerCount);
+                vm.SetRigging(handler.Rigging);
             }
 
             if (Dispatcher.CheckAccess())

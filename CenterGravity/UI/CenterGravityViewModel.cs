@@ -27,6 +27,18 @@ namespace BBI.JD.UI
         public override string ToString() => Label;
     }
 
+    public class RiggingRow
+    {
+        public string Point { get; set; }
+        public string X { get; set; }
+        public string Y { get; set; }
+        public string Z { get; set; }
+        public string Load { get; set; }
+        public string Percent { get; set; }
+        public string SlingAngle { get; set; }
+        public string SlingLoad { get; set; }
+    }
+
     public class CenterGravityViewModel : INotifyPropertyChanged
     {
         private Units units;
@@ -47,6 +59,9 @@ namespace BBI.JD.UI
         private bool hasMarkers;
         private int skippedCount;
         private int expandedContainers;
+
+        private RiggingResult riggingResult;
+        private double? hookHeightInternal;
 
         public CenterGravityViewModel()
         {
@@ -70,6 +85,9 @@ namespace BBI.JD.UI
             CopyCommand = new RelayCommand(CopyCoordinates, () => hasResult);
             ExportCsvCommand = new RelayCommand(ExportCsv, () => hasResult);
             CreateScheduleCommand = new RelayCommand(() => CreateScheduleRequested?.Invoke(), () => hasMarkers);
+            PickLift2Command = new RelayCommand(() => PickLiftPointsRequested?.Invoke(2), () => hasResult);
+            PickLift4Command = new RelayCommand(() => PickLiftPointsRequested?.Invoke(4), () => hasResult);
+            ClearLiftCommand = new RelayCommand(() => ClearLiftPointsRequested?.Invoke(), () => riggingResult != null);
         }
 
         /// <summary>Raised when the user asks to drop the centre-of-gravity marker into the model.</summary>
@@ -80,6 +98,12 @@ namespace BBI.JD.UI
 
         /// <summary>Raised when the user asks to build a Center of Gravity schedule.</summary>
         public Action CreateScheduleRequested;
+
+        /// <summary>Raised (with 2 or 4) when the user wants to pick lift points.</summary>
+        public Action<int> PickLiftPointsRequested;
+
+        /// <summary>Raised when the user wants to drop the rigging result.</summary>
+        public Action ClearLiftPointsRequested;
 
         /// <summary>Raised when the default density changes; the pane pushes it to the handler and recomputes.</summary>
         public Action DensityChanged;
@@ -106,6 +130,7 @@ namespace BBI.JD.UI
                 selectedReference = value;
                 OnPropertyChanged();
                 RefreshCoordinates();
+                RenderRigging();
             }
         }
 
@@ -170,6 +195,34 @@ namespace BBI.JD.UI
         public ICommand CopyCommand { get; }
         public ICommand ExportCsvCommand { get; }
         public ICommand CreateScheduleCommand { get; }
+        public ICommand PickLift2Command { get; }
+        public ICommand PickLift4Command { get; }
+        public ICommand ClearLiftCommand { get; }
+
+        public ObservableCollection<RiggingRow> RiggingRows { get; } = new ObservableCollection<RiggingRow>();
+
+        public bool HasRigging => riggingResult != null && riggingResult.Valid;
+
+        public string RiggingSummary { get; private set; } = string.Empty;
+        public string RiggingWarning { get; private set; } = string.Empty;
+        public bool HasRiggingWarning => !string.IsNullOrEmpty(RiggingWarning);
+
+        public string RiggingDisclaimer => "Preliminary check - not a certified lift plan.";
+
+        private string hookHeightText = string.Empty;
+        public string HookHeightText
+        {
+            get => hookHeightText;
+            set
+            {
+                if (value == hookHeightText) return;
+                hookHeightText = value;
+                OnPropertyChanged();
+                ParseHookHeight();
+            }
+        }
+
+        public double? HookHeightInternal => hookHeightInternal;
 
         public bool HasResult
         {
@@ -290,6 +343,104 @@ namespace BBI.JD.UI
                 case ReferenceMode.ProjectBasePoint: return projectBasePoint;
                 case ReferenceMode.SurveyPoint: return surveyPoint;
                 default: return XYZ.Zero;
+            }
+        }
+
+        /// <summary>Feed the latest rigging result (or null) in from the pane.</summary>
+        public void SetRigging(RiggingResult result)
+        {
+            riggingResult = result;
+            RenderRigging();
+            CommandManager.InvalidateRequerySuggested();
+        }
+
+        private void RenderRigging()
+        {
+            RiggingRows.Clear();
+            RiggingSummary = string.Empty;
+            RiggingWarning = string.Empty;
+
+            RiggingResult r = riggingResult;
+
+            if (r != null && !r.Valid)
+            {
+                RiggingWarning = r.Message ?? string.Empty;
+            }
+            else if (r != null && r.Valid)
+            {
+                XYZ origin = CurrentOrigin();
+
+                foreach (RiggingPointResult p in r.Points)
+                {
+                    XYZ d = p.Point - origin;
+                    RiggingRows.Add(new RiggingRow
+                    {
+                        Point = p.Index.ToString(),
+                        X = FormatValue(d.X, lengthUnit, SpecTypeId.Length),
+                        Y = FormatValue(d.Y, lengthUnit, SpecTypeId.Length),
+                        Z = FormatValue(d.Z, lengthUnit, SpecTypeId.Length),
+                        Load = FormatValue(p.VerticalLoad, massUnit, SpecTypeId.Mass),
+                        Percent = (p.Fraction * 100.0).ToString("0.0", CultureInfo.CurrentCulture) + " %",
+                        SlingAngle = p.SlingAngle > 0
+                            ? (p.SlingAngle * 180.0 / Math.PI).ToString("0.0", CultureInfo.CurrentCulture) + " deg"
+                            : "-",
+                        SlingLoad = p.SlingAngle > 0
+                            ? FormatValue(p.SlingTension, massUnit, SpecTypeId.Mass)
+                            : "-"
+                    });
+                }
+
+                string total = FormatValue(r.TotalWeight, massUnit, SpecTypeId.Mass);
+                string tilt = r.TiltIfSymmetric > 0
+                    ? string.Format(CultureInfo.CurrentCulture, " - tilt if symmetric ~{0:0.0} deg", r.TiltIfSymmetric * 180.0 / Math.PI)
+                    : string.Empty;
+
+                RiggingSummary = string.Format("Total {0}{1}", total, tilt);
+
+                List<string> warns = new();
+                if (!r.CogInsideSupport)
+                {
+                    warns.Add("centre of gravity is outside the lift-point polygon");
+                }
+                if (r.AnyUplift)
+                {
+                    warns.Add("a leg computes as uplift (negative)");
+                }
+
+                RiggingWarning = warns.Count > 0
+                    ? "Warning: " + string.Join("; ", warns) + "."
+                    : string.Empty;
+            }
+
+            OnPropertyChanged(nameof(HasRigging));
+            OnPropertyChanged(nameof(RiggingSummary));
+            OnPropertyChanged(nameof(RiggingWarning));
+            OnPropertyChanged(nameof(HasRiggingWarning));
+        }
+
+        private void ParseHookHeight()
+        {
+            if (string.IsNullOrWhiteSpace(hookHeightText))
+            {
+                hookHeightInternal = null;
+                return;
+            }
+
+            if (units != null &&
+                UnitFormatUtils.TryParse(units, SpecTypeId.Length, hookHeightText, out double internalValue) &&
+                internalValue > 0)
+            {
+                hookHeightInternal = internalValue;
+            }
+            else if (double.TryParse(hookHeightText, NumberStyles.Any, CultureInfo.CurrentCulture, out double raw) && raw > 0)
+            {
+                hookHeightInternal = lengthUnit != null
+                    ? UnitUtils.ConvertToInternalUnits(raw, lengthUnit)
+                    : raw;
+            }
+            else
+            {
+                hookHeightInternal = null;
             }
         }
 
@@ -464,6 +615,35 @@ namespace BBI.JD.UI
             sb.AppendLine(string.Join(sep, "CoG X", "", "", Number(p.X, lengthUnit), ""));
             sb.AppendLine(string.Join(sep, "CoG Y", "", "", Number(p.Y, lengthUnit), ""));
             sb.AppendLine(string.Join(sep, "CoG Z", "", "", Number(p.Z, lengthUnit), ""));
+
+            if (riggingResult != null && riggingResult.Valid)
+            {
+                XYZ origin = CurrentOrigin();
+
+                sb.AppendLine();
+                sb.AppendLine(string.Join(sep, "Rigging point", "X", "Y", "Z", "Leg load", "Fraction", "Sling deg", "Sling load"));
+
+                foreach (RiggingPointResult rp in riggingResult.Points)
+                {
+                    XYZ dp = rp.Point - origin;
+                    sb.AppendLine(string.Join(sep,
+                        rp.Index.ToString(CultureInfo.CurrentCulture),
+                        Number(dp.X, lengthUnit),
+                        Number(dp.Y, lengthUnit),
+                        Number(dp.Z, lengthUnit),
+                        Number(rp.VerticalLoad, massUnit),
+                        rp.Fraction.ToString("0.####", CultureInfo.CurrentCulture),
+                        rp.SlingAngle > 0 ? (rp.SlingAngle * 180.0 / Math.PI).ToString("0.###", CultureInfo.CurrentCulture) : "",
+                        rp.SlingAngle > 0 ? Number(rp.SlingTension, massUnit) : ""));
+                }
+
+                sb.AppendLine(string.Join(sep, "Total weight", "", "", "", Number(riggingResult.TotalWeight, massUnit), "", "", ""));
+                sb.AppendLine(string.Join(sep, "CoG inside support", "", "", "", riggingResult.CogInsideSupport ? "yes" : "no", "", "", ""));
+                if (riggingResult.TiltIfSymmetric > 0)
+                {
+                    sb.AppendLine(string.Join(sep, "Tilt if symmetric (deg)", "", "", "", (riggingResult.TiltIfSymmetric * 180.0 / Math.PI).ToString("0.###", CultureInfo.CurrentCulture), "", "", ""));
+                }
+            }
 
             File.WriteAllText(dialog.FileName, sb.ToString(), new UTF8Encoding(true));
         }

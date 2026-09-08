@@ -9,7 +9,9 @@ namespace BBI.JD
         Select = 2,
         PlaceCenterGravity = 3,
         RemoveCenterGravity = 4,
-        CreateSchedule = 5
+        CreateSchedule = 5,
+        PickLiftPoints = 6,
+        ClearLiftPoints = 7
     }
 
     public class Request
