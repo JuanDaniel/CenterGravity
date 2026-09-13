@@ -55,12 +55,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Fixed
 
 - The dockable panel could come up empty and unresponsive to selection changes
-  (most visible on Revit 2027): its content was built during Revit's very
-  early `ApplicationInitialized` event, which is not guaranteed to have
-  finished - or to have Revit's WPF hosting ready - before the panel can be
-  shown, and a dockable pane's content is only ever built once per session.
-  It is now built the first time the command actually runs, which is always
-  after Revit is fully interactive.
+  (seen on Revit 2027): Revit calls `SetupDockablePane` only once per session,
+  including when it auto-restores a pane that was left open at the end of the
+  previous session - which happens during startup, before any command has run.
+  The panel content is now built in `OnStartup`, which always completes before
+  that can happen. As a safety net, if building the panel still fails for any
+  reason, it now shows the actual exception message instead of staying blank.
 - A selection with no solid geometry no longer produces an empty result or an
   error; the panel reports which elements were left out.
 - Corrected the weighting of elements built from more than one solid.
