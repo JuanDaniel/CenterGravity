@@ -1,4 +1,3 @@
-using Autodesk.Revit.ApplicationServices;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using BBI.JD.UI;
@@ -17,6 +16,15 @@ namespace BBI.JD
         {
             try
             {
+                // Build the handler / external event / WPF control here, the first time
+                // the button is actually clicked. commandData.Application is guaranteed
+                // valid and Revit's UI/WPF hosting is guaranteed ready at this point -
+                // unlike ApplicationInitialized, which fires very early and, if the pane
+                // ends up shown before that has completed (or if it throws and Revit
+                // swallows it), leaves the dockable pane permanently blank for the
+                // session since Revit only calls SetupDockablePane once.
+                CrtlApplication.EnsureInitialized(commandData.Application);
+
                 DockablePane pane = commandData.Application.GetDockablePane(CrtlApplication.PaneId);
 
                 if (pane == null)
@@ -74,11 +82,10 @@ namespace BBI.JD
             pushButton.LargeImage = new BitmapImage(new Uri(Path.Combine(folder, "Resources/icon_32x32.png")));
             pushButton.SetContextualHelp(new ContextualHelp(ContextualHelpType.ChmFile, Path.Combine(folder, "Resources/help.chm")));
 
-            // The WPF control is created once Revit is fully initialized (below),
-            // but the pane must be registered here, in OnStartup.
+            // The pane must be registered here, in OnStartup. Its content (the WPF
+            // control) is built lazily - see EnsureInitialized - the first time the
+            // command actually runs.
             application.RegisterDockablePane(PaneId, "Center Gravity", new CenterGravityPaneProvider());
-
-            application.ControlledApplication.ApplicationInitialized += OnApplicationInitialized;
 
             return Result.Succeeded;
         }
@@ -94,9 +101,15 @@ namespace BBI.JD
             return Result.Succeeded;
         }
 
-        private void OnApplicationInitialized(object sender, Autodesk.Revit.DB.Events.ApplicationInitializedEventArgs e)
+        /// <summary>Idempotent: builds the handler / external event / WPF control once, on the UI thread.</summary>
+        internal static void EnsureInitialized(UIApplication application)
         {
-            uiApplication = new UIApplication(sender as Application);
+            if (control != null)
+            {
+                return;
+            }
+
+            uiApplication = application;
 
             handler = new RequestHandler();
             externalEvent = ExternalEvent.Create(handler);
