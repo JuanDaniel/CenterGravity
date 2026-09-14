@@ -5,9 +5,12 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Media.Imaging;
+using System.Windows.Navigation;
 
 namespace BBI.JD
 {
@@ -18,9 +21,10 @@ namespace BBI.JD
         {
             try
             {
-                // Fallback in case ApplicationInitialized never fired (or failed) for
+                // Fallbacks in case ApplicationInitialized never fired (or failed) for
                 // this session - harmless / idempotent if it already did.
                 CrtlApplication.EnsureSelectionTracking(commandData.Application);
+                CrtlApplication.EnsureEntitlementChecked(commandData.Application.Application);
 
                 DockablePane pane = commandData.Application.GetDockablePane(CrtlApplication.PaneId);
 
@@ -54,14 +58,20 @@ namespace BBI.JD
         public static readonly DockablePaneId PaneId =
             new DockablePaneId(new Guid("e6f1c2a3-9b84-4d5e-a7c6-1f2b3c4d5e6f"));
 
-        // paneContent is what Revit actually displays: the real control, or - if
-        // building it failed for any reason - a plain-code fallback showing the
-        // exception, so the pane is never silently blank.
+        // paneContent is what Revit actually displays: a small always-present shell
+        // that swaps between "checking", the real control, and the trial-expired
+        // banner - so the licence state can change without ever touching the
+        // DockablePane again (Revit only calls SetupDockablePane once per session).
         private static FrameworkElement paneContent;
+        private static System.Windows.Controls.Grid gate;
+        private static FrameworkElement checkingView;
+        private static FrameworkElement trialExpiredView;
         private static CenterGravityControl centerGravityControl;
+
         private static RequestHandler handler;
         private static ExternalEvent externalEvent;
         private static UIApplication uiApplication;
+        private static bool entitlementChecked;
 
         internal static FrameworkElement Control => paneContent;
 
@@ -87,14 +97,25 @@ namespace BBI.JD
             // is guaranteed to run, for every Revit session, before Revit can ever
             // call SetupDockablePane - including when Revit auto-restores a pane
             // that was left open at the end of the previous session, which happens
-            // during startup, before any command (and before ApplicationInitialized,
-            // in some builds) has a chance to run.
+            // during startup, before any command has run.
             try
             {
                 handler = new RequestHandler();
                 externalEvent = ExternalEvent.Create(handler);
                 centerGravityControl = new CenterGravityControl(handler, externalEvent);
-                paneContent = centerGravityControl;
+                checkingView = BuildCheckingView();
+                trialExpiredView = BuildTrialExpiredView();
+
+                gate = new System.Windows.Controls.Grid();
+                gate.Children.Add(centerGravityControl);
+                gate.Children.Add(trialExpiredView);
+                gate.Children.Add(checkingView);
+
+                centerGravityControl.Visibility = System.Windows.Visibility.Collapsed;
+                trialExpiredView.Visibility = System.Windows.Visibility.Collapsed;
+                checkingView.Visibility = System.Windows.Visibility.Visible;
+
+                paneContent = gate;
             }
             catch (Exception ex)
             {
@@ -121,14 +142,18 @@ namespace BBI.JD
 
         private void OnApplicationInitialized(object sender, Autodesk.Revit.DB.Events.ApplicationInitializedEventArgs e)
         {
+            Autodesk.Revit.ApplicationServices.Application app = sender as Autodesk.Revit.ApplicationServices.Application;
+
             try
             {
-                EnsureSelectionTracking(new UIApplication(sender as Autodesk.Revit.ApplicationServices.Application));
+                EnsureSelectionTracking(new UIApplication(app));
             }
             catch (Exception)
             {
                 // Command.Execute will retry with a known-good UIApplication.
             }
+
+            EnsureEntitlementChecked(app);
         }
 
         /// <summary>Idempotent - wires UIApplication.SelectionChanged exactly once.</summary>
@@ -141,6 +166,53 @@ namespace BBI.JD
 
             uiApplication = application;
             uiApplication.SelectionChanged += OnSelectionChanged;
+        }
+
+        /// <summary>Idempotent - kicks off (at most once) the Autodesk App Store entitlement check.</summary>
+        internal static void EnsureEntitlementChecked(Autodesk.Revit.ApplicationServices.Application application)
+        {
+            if (entitlementChecked || application == null)
+            {
+                return;
+            }
+
+            entitlementChecked = true;
+            _ = RunEntitlementCheckAsync(application);
+        }
+
+        private static async Task RunEntitlementCheckAsync(Autodesk.Revit.ApplicationServices.Application application)
+        {
+            string userId = null;
+
+            try
+            {
+                if (Autodesk.Revit.ApplicationServices.Application.IsLoggedIn)
+                {
+                    userId = application.LoginUserId;
+                }
+            }
+            catch (Exception)
+            {
+                // treated as "unknown user" below
+            }
+
+            EntitlementStatus status = await EntitlementService.CheckAsync(userId).ConfigureAwait(false);
+
+            if (gate == null)
+            {
+                return;
+            }
+
+            gate.Dispatcher.Invoke(() => ApplyEntitlement(status));
+        }
+
+        private static void ApplyEntitlement(EntitlementStatus status)
+        {
+            bool blocked = status != null && !status.IsValid;
+
+            checkingView.Visibility = System.Windows.Visibility.Collapsed;
+            centerGravityControl.Visibility = blocked ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+            trialExpiredView.Visibility = blocked ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
         }
 
         private static void OnSelectionChanged(object sender, Autodesk.Revit.UI.Events.SelectionChangedEventArgs e)
@@ -156,6 +228,62 @@ namespace BBI.JD
         internal static void ShowError(Exception ex)
         {
             centerGravityControl?.ShowError(ex);
+        }
+
+        private static FrameworkElement BuildCheckingView()
+        {
+            return new TextBlock
+            {
+                Text = "Checking license...",
+                Margin = new Thickness(10),
+                Opacity = 0.8,
+                TextWrapping = TextWrapping.Wrap,
+                VerticalAlignment = VerticalAlignment.Top
+            };
+        }
+
+        private static FrameworkElement BuildTrialExpiredView()
+        {
+            StackPanel panel = new()
+            {
+                Margin = new Thickness(16),
+                VerticalAlignment = VerticalAlignment.Top
+            };
+
+            panel.Children.Add(new TextBlock
+            {
+                Text = "Trial expired",
+                FontSize = 18,
+                FontWeight = FontWeights.Bold,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 10)
+            });
+
+            panel.Children.Add(new TextBlock
+            {
+                Text = "Your free trial of Center Gravity has ended. Purchase a licence on the Autodesk App Store to keep using this tool.",
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 14)
+            });
+
+            TextBlock link = new() { TextWrapping = TextWrapping.Wrap };
+            Hyperlink hyperlink = new(new Run("Open Center Gravity on the Autodesk App Store"))
+            {
+                NavigateUri = new Uri("https://apps.autodesk.com/Revit/en/Detail/Index?id=" + EntitlementService.AppId)
+            };
+            hyperlink.RequestNavigate += (s, e) =>
+            {
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+                }
+                catch (Exception) { /* ignore */ }
+                e.Handled = true;
+            };
+            link.Inlines.Add(hyperlink);
+            panel.Children.Add(link);
+
+            return panel;
         }
 
         /// <summary>Pure code, no XAML - so it can render even if the real control's resources failed to load.</summary>

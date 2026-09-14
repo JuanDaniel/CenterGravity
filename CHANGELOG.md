@@ -52,6 +52,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - The tool computes from whatever is already selected as soon as the panel is
   opened.
 
+### Trial / licensing
+
+- Center Gravity now checks the Autodesk App Store Entitlement API on startup
+  (cached locally so it still works offline). Once a trial expires, the panel
+  is fully blocked and shows a "Trial expired" message with a link to
+  purchase a licence, instead of the tool itself.
+
 ### Fixed
 
 - The dockable panel could come up empty and unresponsive to selection changes
