@@ -1,0 +1,188 @@
+<UserControl x:Class="BBI.JD.UI.CenterGravityControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignWidth="340" d:DesignHeight="700"
+             MinWidth="280">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+        <Style x:Key="Caption" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,8,0,2" />
+        </Style>
+        <Style x:Key="Section" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="0,14,0,4" />
+        </Style>
+        <Style x:Key="ValueBox" TargetType="TextBox">
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="IsReadOnlyCaretVisible" Value="True" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="3,2" />
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="10">
+
+            <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" Opacity="0.9" Margin="0,0,0,6" />
+
+            <DataGrid ItemsSource="{Binding Rows}"
+                      AutoGenerateColumns="False"
+                      HeadersVisibility="Column"
+                      GridLinesVisibility="Horizontal"
+                      IsReadOnly="True"
+                      CanUserAddRows="False"
+                      CanUserDeleteRows="False"
+                      SelectionMode="Extended"
+                      RowHeaderWidth="0"
+                      MaxHeight="220">
+                <DataGrid.RowStyle>
+                    <Style TargetType="DataGridRow">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Skipped}" Value="True">
+                                <Setter Property="Opacity" Value="0.5" />
+                                <Setter Property="ToolTip" Value="No solid geometry - left out of the calculation" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.RowStyle>
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Id" Binding="{Binding Id}" Width="Auto" />
+                    <DataGridTextColumn Header="Category" Binding="{Binding Category}" Width="*" />
+                    <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*" />
+                    <DataGridTextColumn Header="Volume" Binding="{Binding Volume}" Width="Auto" />
+                    <DataGridTextColumn Header="Mass" Binding="{Binding Mass}" Width="Auto" />
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <TextBlock Text="Weight by" Style="{StaticResource Caption}" />
+            <ComboBox ItemsSource="{Binding WeightOptions}"
+                      SelectedItem="{Binding SelectedWeight, Mode=TwoWay}"
+                      DisplayMemberPath="Label" />
+
+            <Grid Margin="0,4,0,0" Visibility="{Binding WeightByMass, Converter={StaticResource BoolToVis}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="90" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Default density" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <TextBox   Grid.Column="1" Text="{Binding DefaultDensityText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                <TextBlock Grid.Column="2" Text="{Binding DensityUnitLabel}" VerticalAlignment="Center" Opacity="0.8" Margin="6,0,0,0" TextTrimming="CharacterEllipsis" />
+            </Grid>
+
+            <TextBlock Text="Coordinates measured from" Style="{StaticResource Caption}" />
+            <ComboBox ItemsSource="{Binding ReferenceOptions}"
+                      SelectedItem="{Binding SelectedReference, Mode=TwoWay}"
+                      DisplayMemberPath="Label" />
+
+            <TextBlock Text="Lift name (written on the marker)" Style="{StaticResource Caption}" />
+            <TextBox Text="{Binding LiftName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+
+            <Border Margin="0,8,0,0" Padding="6,4"
+                    Background="#33C08040"
+                    Visibility="{Binding HasWarning, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="{Binding Warning}" TextWrapping="Wrap" />
+            </Border>
+
+            <Grid Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Volume" VerticalAlignment="Center" Margin="0,2,8,2" />
+                <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding Volume, Mode=OneWay}" Style="{StaticResource ValueBox}" Margin="0,2" />
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Mass" VerticalAlignment="Center" Margin="0,2,8,2" />
+                <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding Mass, Mode=OneWay}" Style="{StaticResource ValueBox}" Margin="0,2" />
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="X" VerticalAlignment="Center" Margin="0,2,8,2" />
+                <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding X, Mode=OneWay}" Style="{StaticResource ValueBox}" Margin="0,2" />
+
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="Y" VerticalAlignment="Center" Margin="0,2,8,2" />
+                <TextBox   Grid.Row="3" Grid.Column="1" Text="{Binding Y, Mode=OneWay}" Style="{StaticResource ValueBox}" Margin="0,2" />
+
+                <TextBlock Grid.Row="4" Grid.Column="0" Text="Z" VerticalAlignment="Center" Margin="0,2,8,2" />
+                <TextBox   Grid.Row="4" Grid.Column="1" Text="{Binding Z, Mode=OneWay}" Style="{StaticResource ValueBox}" Margin="0,2" />
+
+                <TextBlock Grid.Row="5" Grid.Column="0" Text="(X; Y; Z)" VerticalAlignment="Center" Margin="0,2,8,2" />
+                <TextBox   Grid.Row="5" Grid.Column="1" Text="{Binding Xyz, Mode=OneWay}" Style="{StaticResource ValueBox}" Margin="0,2" />
+            </Grid>
+
+            <WrapPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                <Button Content="Place marker" Command="{Binding PlaceCommand}" Padding="12,4" Margin="4,4,0,0" />
+                <Button Content="Schedule" Command="{Binding CreateScheduleCommand}" Padding="12,4" Margin="4,4,0,0" />
+                <Button Content="Copy" Command="{Binding CopyCommand}" Padding="12,4" Margin="4,4,0,0" />
+                <Button Content="Export CSV" Command="{Binding ExportCsvCommand}" Padding="12,4" Margin="4,4,0,0" />
+                <Button Content="Clear" Command="{Binding ClearCommand}" Padding="12,4" Margin="4,4,0,0" />
+            </WrapPanel>
+
+            <!-- Rigging -->
+            <TextBlock Text="Rigging (preliminary)" Style="{StaticResource Section}" />
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="90" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Hook height above CoG" VerticalAlignment="Center" Margin="0,0,8,0" TextWrapping="Wrap" />
+                <TextBox   Grid.Column="1" Text="{Binding HookHeightText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" VerticalAlignment="Center" />
+            </Grid>
+
+            <WrapPanel Orientation="Horizontal" Margin="0,6,0,0">
+                <Button Content="Pick 2 points" Command="{Binding PickLift2Command}" Padding="12,4" Margin="0,4,4,0" />
+                <Button Content="Pick 4 points" Command="{Binding PickLift4Command}" Padding="12,4" Margin="0,4,4,0" />
+                <Button Content="Clear" Command="{Binding ClearLiftCommand}" Padding="12,4" Margin="0,4,0,0" />
+            </WrapPanel>
+
+            <DataGrid ItemsSource="{Binding RiggingRows}"
+                      Visibility="{Binding HasRigging, Converter={StaticResource BoolToVis}}"
+                      AutoGenerateColumns="False"
+                      HeadersVisibility="Column"
+                      GridLinesVisibility="Horizontal"
+                      IsReadOnly="True"
+                      CanUserAddRows="False"
+                      RowHeaderWidth="0"
+                      MaxHeight="170"
+                      Margin="0,6,0,0">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Pt" Binding="{Binding Point}" Width="Auto" />
+                    <DataGridTextColumn Header="X" Binding="{Binding X}" Width="*" />
+                    <DataGridTextColumn Header="Y" Binding="{Binding Y}" Width="*" />
+                    <DataGridTextColumn Header="Z" Binding="{Binding Z}" Width="*" />
+                    <DataGridTextColumn Header="Leg load" Binding="{Binding Load}" Width="Auto" />
+                    <DataGridTextColumn Header="%" Binding="{Binding Percent}" Width="Auto" />
+                    <DataGridTextColumn Header="Sling" Binding="{Binding SlingAngle}" Width="Auto" />
+                    <DataGridTextColumn Header="Sling load" Binding="{Binding SlingLoad}" Width="Auto" />
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <TextBlock Text="{Binding RiggingSummary}" TextWrapping="Wrap" Margin="0,6,0,0"
+                       Visibility="{Binding HasRigging, Converter={StaticResource BoolToVis}}" />
+
+            <Border Margin="0,6,0,0" Padding="6,4"
+                    Background="#33C04040"
+                    Visibility="{Binding HasRiggingWarning, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="{Binding RiggingWarning}" TextWrapping="Wrap" />
+            </Border>
+
+            <TextBlock Text="{Binding RiggingDisclaimer}" FontStyle="Italic" Opacity="0.7" TextWrapping="Wrap" Margin="0,6,0,0" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -1,0 +1,37 @@
+<Project>
+
+  <!--
+    Resolved BEFORE Microsoft.Common.props so the intermediate (obj) and output
+    (bin) folders can be split per Revit version. Keep the RevitVersion / target
+    framework logic here; everything else lives in CenterGravity.csproj.
+
+    Target frameworks follow what each Revit release ships with:
+      Revit 2024        -> .NET Framework 4.8
+      Revit 2025 / 2026 -> .NET 8
+      Revit 2027        -> .NET 10
+  -->
+  <PropertyGroup>
+    <RevitVersion Condition="'$(RevitVersion)' == '' and $(Configuration.Contains('2024'))">2024</RevitVersion>
+    <RevitVersion Condition="'$(RevitVersion)' == '' and $(Configuration.Contains('2025'))">2025</RevitVersion>
+    <RevitVersion Condition="'$(RevitVersion)' == '' and $(Configuration.Contains('2026'))">2026</RevitVersion>
+    <RevitVersion Condition="'$(RevitVersion)' == '' and $(Configuration.Contains('2027'))">2027</RevitVersion>
+    <RevitVersion Condition="'$(RevitVersion)' == ''">2026</RevitVersion>
+
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework Condition="'$(RevitVersion)' == '2024'">net48</TargetFramework>
+    <TargetFramework Condition="'$(RevitVersion)' == '2027'">net10.0-windows</TargetFramework>
+
+    <ConfigName Condition="$(Configuration.StartsWith('Release'))">Release</ConfigName>
+    <ConfigName Condition="'$(ConfigName)' == ''">Debug</ConfigName>
+
+    <BaseIntermediateOutputPath>obj\$(RevitVersion)\</BaseIntermediateOutputPath>
+    <BaseOutputPath>bin\</BaseOutputPath>
+    <OutputPath>bin\$(ConfigName)\$(RevitVersion)\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+
+    <!-- obj/ is split per version, so the default "exclude my own obj" is not
+         enough - a sibling version's obj must never leak into compilation. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj/**;bin/**</DefaultItemExcludes>
+  </PropertyGroup>
+
+</Project>
