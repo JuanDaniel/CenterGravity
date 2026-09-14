@@ -46,12 +46,45 @@ namespace BBI.JD
 
         private static readonly string CacheFile = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "BBI", "CenterGravity", "entitlement.json");
+            "JDS", "CenterGravity", "entitlement.json");
 
         private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(8) };
 
+        // --- TEMPORARY DEBUG SWITCH -------------------------------------------
+        // Set the CENTERGRAVITY_FORCE_TRIAL_STATE environment variable to "expired"
+        // or "valid" to force that state without waiting on the real trial or the
+        // network - no rebuild needed, just relaunch Revit after setting it, e.g.
+        //   $env:CENTERGRAVITY_FORCE_TRIAL_STATE = "expired"
+        // Unset it (or set it to anything else) to go back to the real check:
+        //   Remove-Item Env:\CENTERGRAVITY_FORCE_TRIAL_STATE
+        // Remove this block before shipping a store build.
+        private const string ForceStateEnvVar = "CENTERGRAVITY_FORCE_TRIAL_STATE";
+        // -------------------------------------------------------------------
+
         public static async Task<EntitlementStatus> CheckAsync(string userId)
         {
+            string forced = Environment.GetEnvironmentVariable(ForceStateEnvVar);
+
+            if (string.Equals(forced, "expired", StringComparison.OrdinalIgnoreCase))
+            {
+                return new EntitlementStatus
+                {
+                    IsValid = false,
+                    Message = "Forced by " + ForceStateEnvVar + "=expired (debug).",
+                    CheckedAtUtc = DateTime.UtcNow
+                };
+            }
+
+            if (string.Equals(forced, "valid", StringComparison.OrdinalIgnoreCase))
+            {
+                return new EntitlementStatus
+                {
+                    IsValid = true,
+                    Message = "Forced by " + ForceStateEnvVar + "=valid (debug).",
+                    CheckedAtUtc = DateTime.UtcNow
+                };
+            }
+
             if (string.IsNullOrWhiteSpace(userId))
             {
                 // Not signed in to an Autodesk account: nothing to check against.
