@@ -28,9 +28,10 @@ Once the plugin is installed, the **JDS** tab will appear in Revit which contain
 
 To see the plugin in action take a look at the video below.
 
-[Center Gravity v2.0.0.0](https://repository-images.githubusercontent.com/370456454/adb45d00-bca0-11eb-9ce3-599c150c03ec)
+**Center Gravity 2.0.0**
+![Center Gravity v2.0.0.0](https://github.com/JuanDaniel/CenterGravity/blob/master/CenterGravity-v2.0.0.0.png?raw=true)
 
-[Center Gravity v1.0.0.5 - video](https://www.youtube.com/watch?v=g3n9bS06vp8)
+[Center Gravity v1.0.0.5 - video](https://www.dailymotion.com/video/k1tDe8I0RdXQaRx1SXu)
 
 ## For more information 
 [Go to Wiki](https://github.com/JuanDaniel/CenterGravity/wiki/Home)
