@@ -9,6 +9,8 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 
@@ -77,6 +79,22 @@ namespace BBI.JD
 
         public Result OnStartup(UIControlledApplication application)
         {
+            // Some graphics drivers (common on integrated GPUs and RDP/VDI sessions)
+            // end up hardware-rendering our WPF content once it's hosted inside
+            // Revit's native dockable-pane window, which comes out solid black
+            // instead of the panel - a known class of bug across Revit add-ins.
+            // Revit itself normally forces software rendering process-wide for
+            // exactly this reason; re-asserting it here, before any WPF element
+            // of ours is created, is a safe, standard mitigation.
+            try
+            {
+                RenderOptions.ProcessRenderMode = RenderMode.SoftwareOnly;
+            }
+            catch (Exception)
+            {
+                // best effort
+            }
+
             string assemblyPath = Assembly.GetExecutingAssembly().Location;
             string folder = new FileInfo(assemblyPath).Directory.FullName;
 

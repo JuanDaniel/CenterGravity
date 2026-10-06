@@ -61,6 +61,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- The dockable panel could render solid black instead of its content on some
+  machines (seen on Revit 2024, reported by a customer) - a known class of bug
+  where a WPF surface hosted inside Revit's native pane window is hardware-
+  rendered by a graphics driver that doesn't handle it correctly (common on
+  integrated GPUs and remote desktop / VDI sessions). Revit itself normally
+  forces software rendering process-wide to avoid exactly this; it is now
+  re-asserted explicitly on startup, before any of the plugin's WPF content is
+  created.
+
 - The dockable panel could come up empty and unresponsive to selection changes
   (seen on Revit 2027): Revit calls `SetupDockablePane` only once per session,
   including when it auto-restores a pane that was left open at the end of the
